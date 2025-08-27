@@ -1,0 +1,139 @@
+{
+  "name": "vex",
+  "displayName": "Vex - Vector Database Manager",
+  "description": "A comprehensive VS Code extension for managing vector databases like Milvus and ChromaDB. Create, manage, and query vector collections with an intuitive interface.",
+  "version": "0.0.1",
+  "publisher": "tsonglew",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tsonglew/vex.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Data Science",
+    "Database",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "vector",
+    "database",
+    "milvus",
+    "chromadb",
+    "embeddings",
+    "ai",
+    "ml"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vex.openVectorDBManager",
+        "title": "Open VectorDB Manager",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.refreshCollections",
+        "title": "Refresh Collections",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.connectToDatabase",
+        "title": "Connect to Database",
+        "category": "Vector Database"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "vex.openVectorDBManager",
+          "when": "true"
+        },
+        {
+          "command": "vex.refreshCollections",
+          "when": "true"
+        },
+        {
+          "command": "vex.connectToDatabase",
+          "when": "true"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "vex.refreshCollections",
+          "when": "true",
+          "group": "navigation"
+        }
+      ]
+    },
+    "views": {
+      "vexVectorDB": [
+        {
+          "id": "vexCollections",
+          "name": "Collections",
+          "when": "true"
+        },
+        {
+          "id": "vexConnections",
+          "name": "Connections",
+          "when": "true"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vexVectorDB",
+          "title": "Vector Database",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "vexCollections",
+        "contents": "No collections found.\n[Connect to Database](command:vex.connectToDatabase)"
+      },
+      {
+        "view": "vexConnections",
+        "contents": "No database connections.\n[Connect to Database](command:vex.connectToDatabase)"
+      }
+    ]
+  },
+  "dependencies": {
+    "@zilliz/milvus2-sdk-node": "^2.6.0",
+    "chromadb": "^1.8.1",
+    "axios": "^1.6.0"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.99.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.32.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.9.2",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1"
+  }
+}
