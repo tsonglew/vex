@@ -1,0 +1,25 @@
+# ChromaDB Configuration for Testing
+server:
+  host: 0.0.0.0
+  port: 8000
+  cors_allow_origins: ["*"]
+  cors_allow_credentials: true
+
+database:
+  backend: sqlite
+  persist_directory: /chroma/chroma
+
+auth:
+  enabled: false
+  credentials: null
+  credentials_provider: null
+
+# Logging configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Performance settings for testing
+performance:
+  max_batch_size: 1000
+  max_embedding_batch_size: 1000

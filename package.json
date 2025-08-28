@@ -39,13 +39,69 @@
         "category": "Vector Database"
       },
       {
-        "command": "vex.refreshCollections",
-        "title": "Refresh Collections",
+        "command": "vex.refreshTreeView",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.addConnection",
+        "title": "Add Database Connection",
+        "icon": "$(add)",
         "category": "Vector Database"
       },
       {
         "command": "vex.connectToDatabase",
-        "title": "Connect to Database",
+        "title": "Connect",
+        "icon": "$(plug)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.disconnectFromDatabase",
+        "title": "Disconnect",
+        "icon": "$(debug-disconnect)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.editConnection",
+        "title": "Edit Connection",
+        "icon": "$(edit)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.deleteConnection",
+        "title": "Delete Connection",
+        "icon": "$(trash)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.createCollection",
+        "title": "Create Collection",
+        "icon": "$(new-folder)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.deleteCollection",
+        "title": "Delete Collection",
+        "icon": "$(trash)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.viewCollection",
+        "title": "View Collection",
+        "icon": "$(eye)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.insertVectors",
+        "title": "Insert Vectors",
+        "icon": "$(add)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.searchVectors",
+        "title": "Search Vectors",
+        "icon": "$(search)",
         "category": "Vector Database"
       }
     ],
@@ -56,32 +112,79 @@
           "when": "true"
         },
         {
-          "command": "vex.refreshCollections",
+          "command": "vex.addConnection",
           "when": "true"
         },
         {
-          "command": "vex.connectToDatabase",
+          "command": "vex.refreshTreeView",
           "when": "true"
         }
       ],
       "view/title": [
         {
-          "command": "vex.refreshCollections",
-          "when": "true",
-          "group": "navigation"
+          "command": "vex.addConnection",
+          "when": "view == vexVectorDBTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vex.refreshTreeView",
+          "when": "view == vexVectorDBTree",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "vex.connectToDatabase",
+          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "group": "connection@1"
+        },
+        {
+          "command": "vex.disconnectFromDatabase",
+          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "group": "connection@2"
+        },
+        {
+          "command": "vex.editConnection",
+          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "group": "management@1"
+        },
+        {
+          "command": "vex.deleteConnection",
+          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "group": "management@2"
+        },
+        {
+          "command": "vex.createCollection",
+          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "group": "collections@1"
+        },
+        {
+          "command": "vex.viewCollection",
+          "when": "view == vexVectorDBTree && viewItem == collection",
+          "group": "collection@1"
+        },
+        {
+          "command": "vex.insertVectors",
+          "when": "view == vexVectorDBTree && viewItem == collection",
+          "group": "collection@2"
+        },
+        {
+          "command": "vex.searchVectors",
+          "when": "view == vexVectorDBTree && viewItem == collection",
+          "group": "collection@3"
+        },
+        {
+          "command": "vex.deleteCollection",
+          "when": "view == vexVectorDBTree && viewItem == collection",
+          "group": "collection@4"
         }
       ]
     },
     "views": {
       "vexVectorDB": [
         {
-          "id": "vexCollections",
-          "name": "Collections",
-          "when": "true"
-        },
-        {
-          "id": "vexConnections",
-          "name": "Connections",
+          "id": "vexVectorDBTree",
+          "name": "Vector Databases",
           "when": "true"
         }
       ]
@@ -97,18 +200,13 @@
     },
     "viewsWelcome": [
       {
-        "view": "vexCollections",
-        "contents": "No collections found.\n[Connect to Database](command:vex.connectToDatabase)"
-      },
-      {
-        "view": "vexConnections",
-        "contents": "No database connections.\n[Connect to Database](command:vex.connectToDatabase)"
+        "view": "vexVectorDBTree",
+        "contents": "No database connections found.\n[Add Database Connection](command:vex.addConnection)\n[Open VectorDB Manager](command:vex.openVectorDBManager)"
       }
     ]
   },
   "dependencies": {
     "@zilliz/milvus2-sdk-node": "^2.6.0",
-    "chromadb": "^1.8.1",
     "axios": "^1.6.0"
   },
   "scripts": {

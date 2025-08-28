@@ -1,0 +1,35 @@
+# Milvus Configuration for Testing
+version: 1.0
+
+# Server configuration
+server:
+  port: 19530
+  mode: standalone
+
+# Database configuration
+database:
+  backend: sqlite
+  path: /var/lib/milvus/data
+
+# Storage configuration
+storage:
+  path: /var/lib/milvus/data
+  auto_flush_interval: 1s
+
+# Logging configuration
+log:
+  level: info
+  file:
+    max_size: 300
+    max_age: 10
+    max_backups: 6
+
+# Performance settings for testing
+performance:
+  max_insert_batch_size: 1000
+  max_search_batch_size: 1000
+
+# Cache configuration
+cache:
+  size: 4GB
+  insert_buffer_size: 1GB
