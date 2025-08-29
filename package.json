@@ -34,11 +34,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "vex.openVectorDBManager",
-        "title": "Open VectorDB Manager",
-        "category": "Vector Database"
-      },
-      {
         "command": "vex.refreshTreeView",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -81,14 +76,8 @@
         "category": "Vector Database"
       },
       {
-        "command": "vex.deleteCollection",
-        "title": "Delete Collection",
-        "icon": "$(trash)",
-        "category": "Vector Database"
-      },
-      {
         "command": "vex.viewCollection",
-        "title": "View Collection",
+        "title": "View Collection Details",
         "icon": "$(eye)",
         "category": "Vector Database"
       },
@@ -103,14 +92,22 @@
         "title": "Search Vectors",
         "icon": "$(search)",
         "category": "Vector Database"
+      },
+      {
+        "command": "vex.listVectors",
+        "title": "List Vectors",
+        "icon": "$(list-unordered)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.deleteCollection",
+        "title": "Delete Collection",
+        "icon": "$(trash)",
+        "category": "Vector Database"
       }
     ],
     "menus": {
       "commandPalette": [
-        {
-          "command": "vex.openVectorDBManager",
-          "when": "true"
-        },
         {
           "command": "vex.addConnection",
           "when": "true"
@@ -164,19 +161,24 @@
           "group": "collection@1"
         },
         {
-          "command": "vex.insertVectors",
+          "command": "vex.listVectors",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@2"
         },
         {
-          "command": "vex.searchVectors",
+          "command": "vex.insertVectors",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@3"
         },
         {
-          "command": "vex.deleteCollection",
+          "command": "vex.searchVectors",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@4"
+        },
+        {
+          "command": "vex.deleteCollection",
+          "when": "view == vexVectorDBTree && viewItem == collection",
+          "group": "collection@5"
         }
       ]
     },
@@ -201,7 +203,7 @@
     "viewsWelcome": [
       {
         "view": "vexVectorDBTree",
-        "contents": "No database connections found.\n[Add Database Connection](command:vex.addConnection)\n[Open VectorDB Manager](command:vex.openVectorDBManager)"
+        "contents": "No database connections found.\n[Add Database Connection](command:vex.addConnection)"
       }
     ]
   },

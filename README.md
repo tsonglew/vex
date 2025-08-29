@@ -5,10 +5,12 @@ A comprehensive VS Code extension for managing vector databases like Milvus and 
 ## Features
 
 - 🚀 **Easy Connection**: Connect to Milvus and ChromaDB databases with simple configuration
-- 📊 **Collection Management**: Create, list, and delete vector collections
-- 🔍 **Vector Operations**: Insert, search, and manage vectors with ease
-- 🎨 **Modern UI**: Clean, intuitive interface that integrates seamlessly with VS Code
-- ⚡ **Fast Performance**: Optimized for quick database operations
+- 📊 **Collection Management**: Create, view, delete and manage vector collections from tree view
+- 🔍 **Vector Operations**: Insert, search, and list vectors with rich data visualization and export capabilities
+- 🔗 **Database Operations**: Connect, disconnect, and manage database connections
+- 🎨 **Tree View Interface**: Clean, intuitive tree view that integrates seamlessly with VS Code
+- 📋 **Rich Data Viewer**: Modern webview panels for displaying vectors, search results, and statistics
+- ⚡ **Fast Performance**: Optimized for quick database operations with efficient data rendering
 
 ## Installation
 
@@ -20,15 +22,15 @@ A comprehensive VS Code extension for managing vector databases like Milvus and 
 
 ## Usage
 
-### Automatic Activation
+### Getting Started
 
-The VectorDB Manager panel will automatically open when VS Code starts.
+The extension provides a tree view in the activity bar for managing your real vector database connections.
 
-### Manual Activation
+### Accessing the Tree View
 
-- Use the command palette: `Ctrl+Shift+P` → "Open VectorDB Manager"
 - Click the Vector Database icon in the activity bar
-- Use the command: `vex.openVectorDBManager`
+- Add your real database connections using the "+" button
+- Connect to your databases to see actual collections and data
 
 ### Connecting to Databases
 
@@ -41,18 +43,36 @@ The VectorDB Manager panel will automatically open when VS Code starts.
    - Host: `localhost` (or your ChromaDB server)
    - Port: `8000` (default ChromaDB port)
 
-### Managing Collections
+### Managing Database Connections
 
-- **Create Collections**: Define name, dimension, and similarity metric
-- **List Collections**: View all available collections
-- **Delete Collections**: Remove unwanted collections
+- **Add Connections**: Add new Milvus or ChromaDB database connections
+- **Connect/Disconnect**: Manage connection status for your databases
+- **Edit Connections**: Modify connection settings
+- **Delete Connections**: Remove database connections
+
+### Working with Collections
+
+- **View Collections**: Browse collections in the tree view for connected databases
+- **Create Collections**: Add new collections by right-clicking on database connections
+- **View Collection Details**: Right-click on collections to see detailed information
+- **Delete Collections**: Remove collections (when connected to database)
+- **Collection Management**: Access all features through right-click context menus
 
 ### Vector Operations
 
-- **Insert Vectors**: Add new vectors with optional IDs and metadata
-- **Search Vectors**: Find similar vectors using query vectors
-- **List Vectors**: Browse vectors in collections
-- **Delete Vectors**: Remove specific vectors by ID
+- **List Vectors**: View vectors in a beautifully designed data table with full vector data, metadata, and statistics
+- **Insert Vectors**: Add new vectors to collections with optional IDs and metadata through intuitive dialogs
+- **Search Vectors**: Perform similarity searches with results displayed in a comprehensive results viewer
+- **Vector Management**: All operations accessible via collection context menus with rich visual feedback
+
+### Data Viewer Features
+
+- **Rich Data Display**: Modern, responsive data tables with VS Code theme integration
+- **Vector Visualization**: Expandable vector data display with hover interactions
+- **Search Results**: Ranked similarity results with score visualization and metadata
+- **Export Functionality**: Copy data to clipboard for external analysis
+- **Performance Optimized**: Efficient rendering of large datasets with pagination
+- **Statistics Dashboard**: Real-time stats showing collection info, dimensions, and counts
 
 ## Supported Databases
 

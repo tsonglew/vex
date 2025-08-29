@@ -95,32 +95,57 @@ export class MilvusStrategy implements VectorDBStrategy {
             throw new Error( 'Milvus client not connected' );
         }
 
-        // For auto_id collections, we must NOT include the id field at all
-        const data = vectors.map( ( vector ) => {
-            return {
-                vector: vector
-            };
-        } );
+        try {
+            // Check collection schema to determine if it uses auto_id
+            const collectionInfo = await this.client.describeCollection( { collection_name: collection } );
+            const idField = collectionInfo.schema?.fields?.find( ( field: any ) => field.is_primary_key );
+            const isAutoId = idField?.autoID || false;
 
-        const result = await this.client.insert( {
-            collection_name: collection,
-            data: data
-        } );
-        console.log( 'result', result );
+            console.log( 'Collection schema - auto_id:', isAutoId );
 
-        // Check if insert operation was successful
-        if ( result.status && result.status.code !== 200 ) {
-            const errorMessage = result.status.reason || 'Insert operation failed';
-            throw new Error( `Milvus insert failed (Code: ${result.status.code}): ${errorMessage}` );
+            let data;
+            if ( isAutoId ) {
+                // For auto_id collections, don't include id field
+                data = vectors.map( ( vector ) => {
+                    return {
+                        vector: vector
+                    };
+                } );
+            } else {
+                // For manual id collections, generate numeric IDs if not provided
+                data = vectors.map( ( vector, index ) => {
+                    const id = ids && ids[index] ? parseInt( ids[index] ) : Date.now() + index;
+                    return {
+                        id: id,
+                        vector: vector
+                    };
+                } );
+            }
+
+            const result = await this.client.insert( {
+                collection_name: collection,
+                data: data
+            } );
+            console.log( 'Insert result:', result );
+
+            // Check if insert operation was successful
+            if ( result.status && result.status.code !== 0 ) {
+                const errorMessage = result.status.reason || 'Insert operation failed';
+                throw new Error( `Milvus insert failed (Code: ${result.status.code}): ${errorMessage}` );
+            }
+
+            // Flush the collection to ensure data is persisted and available for querying
+            await this.client.flushSync( { collection_names: [collection] } );
+
+            // Load the collection into memory to make it queryable
+            await this.client.loadCollection( { collection_name: collection } );
+
+            return vectors.length;
+
+        } catch ( error ) {
+            console.error( 'Insert vectors error:', error );
+            throw error;
         }
-
-        // Flush the collection to ensure data is persisted and available for querying
-        await this.client.flushSync( { collection_names: [collection] } );
-
-        // Load the collection into memory to make it queryable
-        await this.client.loadCollection( { collection_name: collection } );
-
-        return vectors.length;
     }
 
     async searchVectors( collection: string, vector: number[], topK: number ): Promise<Array<{ id: string; distance: number; vector?: number[] }>> {
@@ -158,7 +183,6 @@ export class MilvusStrategy implements VectorDBStrategy {
             // Use proper integer comparison for auto-generated IDs
             const response = await this.client.query( {
                 collection_name: collection,
-                expr: 'id >= 0',
                 output_fields: ['id', 'vector'],
                 limit: 100
             } );

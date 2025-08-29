@@ -1,57 +1,35 @@
 import * as vscode from 'vscode';
-import { VectorDBManager } from './vectorDBManager';
+import { ConnectionManager } from './connectionManager';
+import { ConnectionStorage } from './connectionStorage';
 
 export class VectorDBTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> = new vscode.EventEmitter<TreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private connections: DatabaseConnection[] = [];
+    private connectionStorage: ConnectionStorage;
 
-    constructor( private manager: VectorDBManager ) {
-        // Listen for connection changes from the manager
-        this.setupManagerListeners();
-
-        // Add sample connections for demonstration
-        this.initializeSampleConnections();
+    constructor( private connectionManager: ConnectionManager, context: vscode.ExtensionContext ) {
+        this.connectionStorage = new ConnectionStorage( context );
+        // Load persisted connections on initialization
+        this.initializeConnections();
     }
 
-    private setupManagerListeners(): void {
-        // This will be implemented to listen to connection status changes
-        // from the VectorDBManager
-    }
+    private async initializeConnections(): Promise<void> {
+        try {
+            this.connections = await this.connectionStorage.loadConnections();
+            this.refresh();
 
-    private initializeSampleConnections(): void {
-        // Add sample connections for demonstration purposes
-        const sampleConnections: DatabaseConnection[] = [
-            {
-                id: 'milvus-local',
-                name: 'Local Milvus',
-                type: 'milvus',
-                host: 'localhost',
-                port: '19530',
-                isConnected: true,
-                lastConnected: new Date()
-            },
-            {
-                id: 'chroma-dev',
-                name: 'Development ChromaDB',
-                type: 'chroma',
-                host: 'localhost',
-                port: '8000',
-                isConnected: false
-            },
-            {
-                id: 'milvus-prod',
-                name: 'Production Milvus',
-                type: 'milvus',
-                host: 'prod-milvus.company.com',
-                port: '19530',
-                username: 'admin',
-                isConnected: false
+            if ( this.connections.length > 0 ) {
+                console.log( `Loaded ${this.connections.length} persisted database connections` );
+                vscode.window.showInformationMessage(
+                    `Restored ${this.connections.length} database connection${this.connections.length !== 1 ? 's' : ''}`
+                );
             }
-        ];
-
-        this.connections = sampleConnections;
+        } catch ( error ) {
+            console.error( 'Failed to initialize connections:', error );
+            this.connections = [];
+        }
     }
 
     refresh(): void {
@@ -95,8 +73,8 @@ export class VectorDBTreeProvider implements vscode.TreeDataProvider<TreeItem> {
                 return [new PlaceholderItem( 'Not connected', 'Connect to view collections' )];
             }
 
-            // Get collections from the manager
-            const collections = await this.getCollectionsFromManager( dbItem.connection );
+            // Get collections for this connection
+            const collections = await this.getCollectionsForConnection( dbItem.connection );
 
             if ( collections.length === 0 ) {
                 return [new PlaceholderItem( 'No collections', 'Create a collection to get started' )];
@@ -109,51 +87,72 @@ export class VectorDBTreeProvider implements vscode.TreeDataProvider<TreeItem> {
         }
     }
 
-    private async getCollectionsFromManager( connection: DatabaseConnection ): Promise<any[]> {
+    private async getCollectionsForConnection( connection: DatabaseConnection ): Promise<any[]> {
         try {
-            // TODO: Integrate with the VectorDBManager to get actual collections
-            // For now, return mock data for demonstration
-            if ( connection.type === 'milvus' ) {
-                return [
-                    { name: 'documents', dimension: 768, vectorCount: 1250 },
-                    { name: 'images', dimension: 512, vectorCount: 890 },
-                    { name: 'products', dimension: 1024, vectorCount: 2100 }
-                ];
-            } else if ( connection.type === 'chroma' ) {
-                return [
-                    { name: 'embeddings', dimension: 384, vectorCount: 750 },
-                    { name: 'semantic_search', dimension: 768, vectorCount: 1500 }
-                ];
+            // Only return real collections if actually connected
+            if ( !connection.isConnected || !this.connectionManager.isConnected( connection.id ) ) {
+                return [];
             }
-            return [];
+
+            // Get real collections from the database
+            return await this.connectionManager.listCollections( connection.id );
         } catch ( error ) {
-            console.error( 'Error getting collections from manager:', error );
+            console.error( 'Error getting collections for connection:', error );
             return [];
         }
     }
 
     // Public methods for external management
-    addConnection( connection: DatabaseConnection ): void {
-        this.connections.push( connection );
-        this.refresh();
-    }
-
-    updateConnection( id: string, updates: Partial<DatabaseConnection> ): void {
-        const index = this.connections.findIndex( conn => conn.id === id );
-        if ( index !== -1 ) {
-            this.connections[index] = { ...this.connections[index], ...updates };
+    async addConnection( connection: DatabaseConnection ): Promise<void> {
+        try {
+            this.connections = await this.connectionStorage.addConnection( connection, this.connections );
             this.refresh();
+        } catch ( error ) {
+            console.error( 'Failed to add connection:', error );
+            vscode.window.showErrorMessage( 'Failed to save database connection' );
         }
     }
 
-    removeConnection( id: string ): void {
-        this.connections = this.connections.filter( conn => conn.id !== id );
-        this.refresh();
+    async updateConnection( id: string, updates: Partial<DatabaseConnection> ): Promise<void> {
+        try {
+            this.connections = await this.connectionStorage.updateConnection( id, updates, this.connections );
+            this.refresh();
+        } catch ( error ) {
+            console.error( 'Failed to update connection:', error );
+            vscode.window.showErrorMessage( 'Failed to update database connection' );
+        }
+    }
+
+    async removeConnection( id: string ): Promise<void> {
+        try {
+            this.connections = await this.connectionStorage.removeConnection( id, this.connections );
+            this.refresh();
+        } catch ( error ) {
+            console.error( 'Failed to remove connection:', error );
+            vscode.window.showErrorMessage( 'Failed to remove database connection' );
+        }
     }
 
     setConnections( connections: DatabaseConnection[] ): void {
         this.connections = connections;
         this.refresh();
+    }
+
+    // Additional utility methods
+    getConnections(): DatabaseConnection[] {
+        return [...this.connections];
+    }
+
+    async clearAllConnections(): Promise<void> {
+        try {
+            await this.connectionStorage.clearAllConnections();
+            this.connections = [];
+            this.refresh();
+            vscode.window.showInformationMessage( 'All database connections have been cleared' );
+        } catch ( error ) {
+            console.error( 'Failed to clear connections:', error );
+            vscode.window.showErrorMessage( 'Failed to clear database connections' );
+        }
     }
 }
 
