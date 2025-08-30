@@ -6,20 +6,52 @@ export class MilvusStrategy implements VectorDBStrategy {
     private client: MilvusClient | undefined;
 
     async connect( host: string, port: string, username?: string, password?: string ): Promise<void> {
-        const address = `${host}:${port}`;
-        const clientConfig: any = { address };
+        try {
+            // Handle Docker networking issue: use 127.0.0.1 instead of localhost
+            const resolvedHost = host === 'localhost' ? '127.0.0.1' : host;
+            const address = `${resolvedHost}:${port}`;
+            console.log( `Attempting to connect to Milvus at ${address}` );
 
-        if ( username && password ) {
-            clientConfig.username = username;
-            clientConfig.password = password;
-        }
+            // Simplified client configuration that works with Docker
+            const clientConfig: any = {
+                address,
+                timeout: 30000 // 30 second timeout
+            };
 
-        this.client = new MilvusClient( clientConfig );
+            if ( username && password ) {
+                clientConfig.username = username;
+                clientConfig.password = password;
+            }
 
-        // Test the connection by checking if server is alive
-        const response = await this.client.checkHealth();
-        if ( !response.isHealthy ) {
-            throw new Error( 'Milvus server is not healthy' );
+            this.client = new MilvusClient( clientConfig );
+
+            // Test the connection with listCollections
+            console.log( 'Testing connection with listCollections...' );
+            const collections = await this.client.listCollections();
+            console.log( `Successfully connected to Milvus. Found ${collections.data?.length || 0} collections.` );
+        } catch ( error ) {
+            // Clean up the client if connection fails
+            this.client = undefined;
+            console.error( 'Milvus connection failed:', error );
+
+            // Provide specific guidance based on error type
+            if ( error instanceof Error ) {
+                if ( error.message.includes( 'UNAVAILABLE' ) ) {
+                    throw new Error( `Milvus server at ${host}:${port} is unavailable. Please ensure:
+1. Milvus server is running and healthy
+2. Port ${port} is accessible
+3. No firewall blocking the connection
+4. Docker container (if used) is properly started
+
+Try: docker ps | grep milvus` );
+                } else if ( error.message.includes( 'timeout' ) ) {
+                    throw new Error( `Connection to Milvus timed out. The server might be overloaded or network is slow.` );
+                } else if ( error.message.includes( 'permission' ) || error.message.includes( 'authentication' ) ) {
+                    throw new Error( `Authentication failed for Milvus. Check username/password or server configuration.` );
+                }
+            }
+
+            throw new Error( `Failed to connect to Milvus at ${host}:${port}: ${error}` );
         }
     }
 
@@ -33,8 +65,18 @@ export class MilvusStrategy implements VectorDBStrategy {
             throw new Error( 'Milvus client not connected' );
         }
 
-        const response = await this.client.listCollections();
-        return response.data?.map( ( col: any ) => ( { name: col.name || col } ) ) || [];
+        try {
+            const response = await this.client.listCollections();
+            const collections = response.data?.map( ( col: any ) => ( {
+                name: col.name || col,
+                id: col.id || undefined
+            } ) ) || [];
+            console.log( `Listed ${collections.length} collections` );
+            return collections;
+        } catch ( error ) {
+            console.error( 'Error listing collections:', error );
+            throw new Error( `Failed to list collections: ${error}` );
+        }
     }
 
     async createCollection( name: string, dimension: number, metric: string ): Promise<void> {
@@ -42,44 +84,49 @@ export class MilvusStrategy implements VectorDBStrategy {
             throw new Error( 'Milvus client not connected' );
         }
 
-        const metricMap: { [key: string]: MetricType } = {
-            'cosine': MetricType.COSINE,
-            'euclidean': MetricType.L2,
-            'dot': MetricType.IP
-        };
+        try {
+            const metricMap: { [key: string]: MetricType } = {
+                'cosine': MetricType.COSINE,
+                'euclidean': MetricType.L2,
+                'dot': MetricType.IP
+            };
 
-        const fields = [
-            {
-                name: 'id',
-                data_type: DataType.Int64,
-                is_primary_key: true,
-                auto_id: true
-            },
-            {
-                name: 'vector',
-                data_type: DataType.FloatVector,
-                dim: dimension
-            }
-        ];
+            const fields = [
+                {
+                    name: 'id',
+                    data_type: DataType.Int64,
+                    is_primary_key: true,
+                    auto_id: true
+                },
+                {
+                    name: 'vector',
+                    data_type: DataType.FloatVector,
+                    dim: dimension
+                }
+            ];
 
-        // Create collection with explicit schema
-        await this.client.createCollection( {
-            collection_name: name,
-            fields: fields,
-            enable_dynamic_field: false
-        } );
+            // Create collection with explicit schema
+            await this.client.createCollection( {
+                collection_name: name,
+                fields: fields,
+                enable_dynamic_field: false
+            } );
 
-        // Create index separately after collection creation
-        await this.client.createIndex( {
-            collection_name: name,
-            field_name: 'vector',
-            index_type: IndexType.HNSW,
-            metric_type: metricMap[metric] || MetricType.COSINE,
-            params: { M: 8, efConstruction: 64 }
-        } );
+            // Create index separately after collection creation
+            await this.client.createIndex( {
+                collection_name: name,
+                field_name: 'vector',
+                index_type: IndexType.HNSW,
+                metric_type: metricMap[metric] || MetricType.COSINE,
+                params: { M: 8, efConstruction: 64 }
+            } );
 
-        // Load the newly created collection to make it ready for operations
-        await this.client.loadCollection( { collection_name: name } );
+            // Load the newly created collection to make it ready for operations
+            await this.client.loadCollection( { collection_name: name } );
+        } catch ( error ) {
+            console.error( 'Error creating collection:', error );
+            throw new Error( `Failed to create collection ${name}: ${error}` );
+        }
     }
 
     async deleteCollection( name: string ): Promise<void> {
@@ -87,7 +134,12 @@ export class MilvusStrategy implements VectorDBStrategy {
             throw new Error( 'Milvus client not connected' );
         }
 
-        await this.client.dropCollection( { collection_name: name } );
+        try {
+            await this.client.dropCollection( { collection_name: name } );
+        } catch ( error ) {
+            console.error( 'Error deleting collection:', error );
+            throw new Error( `Failed to delete collection ${name}: ${error}` );
+        }
     }
 
     async insertVectors( collection: string, vectors: number[][], ids?: string[], metadata?: any[] ): Promise<number> {
@@ -98,104 +150,71 @@ export class MilvusStrategy implements VectorDBStrategy {
         try {
             // Check collection schema to determine if it uses auto_id
             const collectionInfo = await this.client.describeCollection( { collection_name: collection } );
-            const idField = collectionInfo.schema?.fields?.find( ( field: any ) => field.is_primary_key );
-            const isAutoId = idField?.autoID || false;
+            const hasAutoId = collectionInfo.schema?.fields?.some( ( field: any ) => field.name === 'id' && field.auto_id );
 
-            console.log( 'Collection schema - auto_id:', isAutoId );
-
-            let data;
-            if ( isAutoId ) {
-                // For auto_id collections, don't include id field
-                data = vectors.map( ( vector ) => {
-                    return {
-                        vector: vector
-                    };
-                } );
-            } else {
-                // For manual id collections, generate numeric IDs if not provided
-                data = vectors.map( ( vector, index ) => {
-                    const id = ids && ids[index] ? parseInt( ids[index] ) : Date.now() + index;
-                    return {
-                        id: id,
-                        vector: vector
-                    };
-                } );
-            }
-
-            const result = await this.client.insert( {
-                collection_name: collection,
-                data: data
+            const insertData: any[] = [];
+            vectors.forEach( ( vector, index ) => {
+                const data: any = { vector };
+                if ( !hasAutoId && ids && ids[index] ) {
+                    data.id = parseInt( ids[index] );
+                }
+                if ( metadata && metadata[index] ) {
+                    Object.assign( data, metadata[index] );
+                }
+                insertData.push( data );
             } );
-            console.log( 'Insert result:', result );
 
-            // Check if insert operation was successful
-            if ( result.status && result.status.code !== 0 ) {
-                const errorMessage = result.status.reason || 'Insert operation failed';
-                throw new Error( `Milvus insert failed (Code: ${result.status.code}): ${errorMessage}` );
-            }
+            const response = await this.client.insert( {
+                collection_name: collection,
+                data: insertData
+            } );
 
-            // Flush the collection to ensure data is persisted and available for querying
-            await this.client.flushSync( { collection_names: [collection] } );
-
-            // Load the collection into memory to make it queryable
-            await this.client.loadCollection( { collection_name: collection } );
-
-            return vectors.length;
-
+            return Number( response.insert_cnt ) || insertData.length;
         } catch ( error ) {
-            console.error( 'Insert vectors error:', error );
-            throw error;
+            console.error( 'Error inserting vectors:', error );
+            throw new Error( `Failed to insert vectors: ${error}` );
         }
     }
 
-    async searchVectors( collection: string, vector: number[], topK: number ): Promise<Array<{ id: string; distance: number; vector?: number[] }>> {
-        if ( !this.client ) {
-            throw new Error( 'Milvus client not connected' );
-        }
-
-        // Ensure collection is loaded before searching
-        await this.client.loadCollection( { collection_name: collection } );
-
-        const response = await this.client.search( {
-            collection_name: collection,
-            vector: vector,
-            limit: topK,
-            output_fields: ['id']
-        } );
-
-        return response.results?.map( result => ( {
-            id: result.id?.toString() || '',
-            distance: result.score || 0,
-            vector: undefined // Milvus doesn't return vectors in search by default
-        } ) ) || [];
-    }
-
-    async listVectors( collection: string ): Promise<Array<{ id: string; vector: number[]; metadata: any }>> {
+    async searchVectors( collection: string, vector: number[], topK: number ): Promise<any[]> {
         if ( !this.client ) {
             throw new Error( 'Milvus client not connected' );
         }
 
         try {
-            // Ensure collection is loaded before querying
-            await this.client.loadCollection( { collection_name: collection } );
-
-            // Query all vectors (limited to first 100 for performance)
-            // Use proper integer comparison for auto-generated IDs
-            const response = await this.client.query( {
+            const response = await this.client.search( {
                 collection_name: collection,
-                output_fields: ['id', 'vector'],
-                limit: 100
+                vectors: [vector],
+                topk: topK,
+                output_fields: ['*']
             } );
 
-            return response.data?.map( item => ( {
-                id: item.id?.toString() || '',
-                vector: item.vector || [],
-                metadata: {}
-            } ) ) || [];
+            return response.results || [];
+        } catch ( error ) {
+            console.error( 'Error searching vectors:', error );
+            throw new Error( `Failed to search vectors: ${error}` );
+        }
+    }
+
+    async listVectors( collection: string ): Promise<any[]> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            // For Milvus, we need to query the collection to get vectors
+            // This is a simplified approach - in production you might want pagination
+            const response = await this.client.query( {
+                collection_name: collection,
+                expr: 'id >= 0',
+                limit: 100,
+                output_fields: ['*']
+            } );
+
+            return response.data || [];
         } catch ( error ) {
             console.error( 'Error listing vectors:', error );
-            // If query fails, return empty array
-            return [];
+            throw new Error( `Failed to list vectors: ${error}` );
         }
     }
 
@@ -204,12 +223,16 @@ export class MilvusStrategy implements VectorDBStrategy {
             throw new Error( 'Milvus client not connected' );
         }
 
-        const expr = `id in [${ids.join( ',' )}]`;
-        await this.client.deleteEntities( {
-            collection_name: collection,
-            expr: expr
-        } );
+        try {
+            const response = await this.client.delete( {
+                collection_name: collection,
+                filter: `id in [${ids.join( ',' )}]`
+            } );
 
-        return ids.length;
+            return Number( response.delete_cnt ) || 0;
+        } catch ( error ) {
+            console.error( 'Error deleting vectors:', error );
+            throw new Error( `Failed to delete vectors: ${error}` );
+        }
     }
 }

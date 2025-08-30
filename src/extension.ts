@@ -308,8 +308,8 @@ async function showAddConnectionDialog(): Promise<any> {
 
     const host = await vscode.window.showInputBox( {
         prompt: 'Enter host',
-        placeHolder: 'localhost',
-        value: 'localhost'
+        placeHolder: '127.0.0.1',
+        value: '127.0.0.1'
     } );
     if ( !host ) { return null; }
 

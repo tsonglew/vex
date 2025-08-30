@@ -1,9 +1,10 @@
 {
-  "name": "vex",
+  "name": "vecx",
   "displayName": "Vex - Vector Database Manager",
   "description": "A comprehensive VS Code extension for managing vector databases like Milvus and ChromaDB. Create, manage, and query vector collections with an intuitive interface.",
   "version": "0.0.1",
   "publisher": "tsonglew",
+  "icon": "assets/logo.jpeg",
   "repository": {
     "type": "git",
     "url": "https://github.com/tsonglew/vex.git"
@@ -14,7 +15,6 @@
   },
   "categories": [
     "Data Science",
-    "Database",
     "Machine Learning",
     "Other"
   ],
