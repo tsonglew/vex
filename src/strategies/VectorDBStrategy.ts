@@ -5,6 +5,12 @@ export interface VectorDBStrategy {
     connect( host: string, port: string, username?: string, password?: string ): Promise<void>;
     disconnect(): Promise<void>;
 
+    // Database operations
+    listDatabases(): Promise<Array<{ name: string;[key: string]: any }>>;
+    createDatabase( name: string ): Promise<void>;
+    deleteDatabase( name: string ): Promise<void>;
+    useDatabase( name: string ): Promise<void>;
+
     // Collection operations
     listCollections(): Promise<Array<{ name: string;[key: string]: any }>>;
     createCollection( name: string, dimension: number, metric: string ): Promise<void>;

@@ -1,0 +1,35 @@
+etcd:
+  endpoints:
+    - etcd:2379
+
+minio:
+  address: minio
+  port: 9000
+  accessKeyID: minioadmin
+  secretAccessKey: minioadmin
+  useSSL: false
+
+proxy:
+  port: 19530
+  maxNameLength: 255
+  maxFieldNum: 256
+  maxDimension: 32768
+  maxShardNum: 256
+  maxTaskNum: 1024
+  http:
+    enabled: true
+    debug_mode: false
+
+common:
+  defaultPartitionName: "_default"
+  defaultIndexName: "_default_idx"
+  retentionDuration: 432000
+  indexSliceSize: 16
+
+log:
+  level: info
+  file:
+    maxSize: 300
+    maxAge: 10
+    maxBackups: 20
+  format: text

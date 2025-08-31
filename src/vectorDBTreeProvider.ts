@@ -36,69 +36,120 @@ export class VectorDBTreeProvider implements vscode.TreeDataProvider<TreeItem> {
         this._onDidChangeTreeData.fire();
     }
 
+    // Force refresh databases for a specific server connection
+    refreshServerDatabases( connectionId: string ): void {
+        // This will trigger a refresh of the specific server's databases
+        this._onDidChangeTreeData.fire();
+    }
+
     getTreeItem( element: TreeItem ): vscode.TreeItem {
         return element;
     }
 
     getChildren( element?: TreeItem ): Thenable<TreeItem[]> {
         if ( !element ) {
-            // Root level - show database connections
-            return Promise.resolve( this.getDatabaseConnections() );
+            // Root level - show server connections
+            return Promise.resolve( this.getServerConnections() );
         }
 
-        if ( element instanceof DatabaseConnectionItem ) {
+        if ( element instanceof ServerConnectionItem ) {
+            // Show databases for this server
+            return this.getDatabasesForServer( element );
+        }
+
+        if ( element instanceof DatabaseItem ) {
             // Show collections for this database
             return this.getCollectionsForDatabase( element );
         }
 
         if ( element instanceof CollectionItem ) {
-            // Show collection details (vectors, indexes, etc.)
-            return Promise.resolve( [] ); // Can be expanded later for collection details
+            // Show vectors for this collection
+            return this.getVectorsForCollection( element );
+        }
+
+        if ( element instanceof VectorItem ) {
+            // Vectors are leaf nodes
+            return Promise.resolve( [] );
         }
 
         return Promise.resolve( [] );
     }
 
-    private getDatabaseConnections(): TreeItem[] {
+    private getServerConnections(): TreeItem[] {
         if ( this.connections.length === 0 ) {
-            return [new PlaceholderItem( 'No database connections', 'Click "+" to add a connection' )];
+            return [new PlaceholderItem( 'No server connections', 'Click "+" to add a connection' )];
         }
 
-        return this.connections.map( conn => new DatabaseConnectionItem( conn ) );
+        return this.connections.map( conn => new ServerConnectionItem( conn ) );
     }
 
-    private async getCollectionsForDatabase( dbItem: DatabaseConnectionItem ): Promise<TreeItem[]> {
+    private async getDatabasesForServer( serverItem: ServerConnectionItem ): Promise<TreeItem[]> {
+        try {
+            if ( !serverItem.connection.isConnected ) {
+                return [new PlaceholderItem( 'Not connected', 'Connect to view databases' )];
+            }
+
+            console.log( `Fetching databases from server: ${serverItem.connection.name} (${serverItem.connection.host}:${serverItem.connection.port})` );
+
+            // Get databases directly from the server using listDatabases API
+            const databases = await this.connectionManager.listDatabases( serverItem.connection.id );
+
+            console.log( `Retrieved ${databases.length} databases from server` );
+
+            if ( databases.length === 0 ) {
+                return [new PlaceholderItem( 'No databases', 'Create a database to get started' )];
+            }
+
+            return databases.map( database => new DatabaseItem( database, serverItem.connection ) );
+        } catch ( error ) {
+            console.error( 'Error getting databases from server:', error );
+            return [new PlaceholderItem( 'Error loading databases', error?.toString() || 'Unknown error' )];
+        }
+    }
+
+    private async getCollectionsForDatabase( dbItem: DatabaseItem ): Promise<TreeItem[]> {
         try {
             if ( !dbItem.connection.isConnected ) {
                 return [new PlaceholderItem( 'Not connected', 'Connect to view collections' )];
             }
 
-            // Get collections for this connection
-            const collections = await this.getCollectionsForConnection( dbItem.connection );
+            // Switch to the selected database
+            await this.connectionManager.useDatabase( dbItem.connection.id, dbItem.database.name );
+
+            // Get collections for this database
+            const collections = await this.connectionManager.listCollections( dbItem.connection.id );
 
             if ( collections.length === 0 ) {
                 return [new PlaceholderItem( 'No collections', 'Create a collection to get started' )];
             }
 
-            return collections.map( collection => new CollectionItem( collection, dbItem.connection ) );
+            return collections.map( collection => new CollectionItem( collection, dbItem.connection, dbItem.database ) );
         } catch ( error ) {
             console.error( 'Error getting collections:', error );
             return [new PlaceholderItem( 'Error loading collections', error?.toString() || 'Unknown error' )];
         }
     }
 
-    private async getCollectionsForConnection( connection: DatabaseConnection ): Promise<any[]> {
+    private async getVectorsForCollection( collectionItem: CollectionItem ): Promise<TreeItem[]> {
         try {
-            // Only return real collections if actually connected
-            if ( !connection.isConnected || !this.connectionManager.isConnected( connection.id ) ) {
-                return [];
+            if ( !collectionItem.connection.isConnected ) {
+                return [new PlaceholderItem( 'Not connected', 'Connect to view vectors' )];
             }
 
-            // Get real collections from the database
-            return await this.connectionManager.listCollections( connection.id );
+            // Get vectors from the collection
+            const vectors = await this.connectionManager.listVectors( collectionItem.connection.id, collectionItem.collection.name );
+
+            if ( vectors.length === 0 ) {
+                return [new PlaceholderItem( 'No vectors', 'Insert vectors to get started' )];
+            }
+
+            // Limit to first 100 vectors for performance
+            const limitedVectors = vectors.slice( 0, 100 );
+
+            return limitedVectors.map( vector => new VectorItem( vector, collectionItem.collection.name ) );
         } catch ( error ) {
-            console.error( 'Error getting collections for connection:', error );
-            return [];
+            console.error( 'Error getting vectors:', error );
+            return [new PlaceholderItem( 'Error loading vectors', error?.toString() || 'Unknown error' )];
         }
     }
 
@@ -159,25 +210,31 @@ export class VectorDBTreeProvider implements vscode.TreeDataProvider<TreeItem> {
 // Base class for all tree items
 export abstract class TreeItem extends vscode.TreeItem { }
 
-// Database connection item
-export class DatabaseConnectionItem extends TreeItem {
+// Server connection item (Milvus server)
+export class ServerConnectionItem extends TreeItem {
     constructor( public readonly connection: DatabaseConnection ) {
         super( connection.name, vscode.TreeItemCollapsibleState.Collapsed );
 
         this.tooltip = this.getTooltip();
         this.description = this.getDescription();
         this.iconPath = this.getIcon();
-        this.contextValue = 'databaseConnection';
+        this.contextValue = 'serverConnection';
     }
 
     private getTooltip(): string {
         const { host, port, type, isConnected } = this.connection;
-        return `${type.toUpperCase()} Database\nHost: ${host}:${port}\nStatus: ${isConnected ? 'Connected' : 'Disconnected'}`;
+        const status = isConnected ? '🟢 Connected' : '🔴 Disconnected';
+        const actions = isConnected ?
+            'Right-click to: Disconnect, Edit, Delete Server, Create Database' :
+            'Right-click to: Connect, Edit, Delete Server';
+
+        return `${type.toUpperCase()} Server\nHost: ${host}:${port}\nStatus: ${status}\n\n${actions}`;
     }
 
     private getDescription(): string {
         const { host, port, isConnected } = this.connection;
-        return `${host}:${port} ${isConnected ? '🟢' : '🔴'}`;
+        const status = isConnected ? '🟢 Connected' : '🔴 Disconnected';
+        return `${host}:${port} ${status}`;
     }
 
     private getIcon(): vscode.ThemeIcon {
@@ -187,24 +244,50 @@ export class DatabaseConnectionItem extends TreeItem {
             return new vscode.ThemeIcon( 'plug', new vscode.ThemeColor( 'errorForeground' ) );
         }
 
+        // Connected state with different colors for different types
         switch ( type ) {
             case 'milvus':
-                return new vscode.ThemeIcon( 'database', new vscode.ThemeColor( 'charts.blue' ) );
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.blue' ) );
             case 'chroma':
-                return new vscode.ThemeIcon( 'database', new vscode.ThemeColor( 'charts.purple' ) );
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.purple' ) );
             default:
-                return new vscode.ThemeIcon( 'database', new vscode.ThemeColor( 'charts.foreground' ) );
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.foreground' ) );
         }
     }
 }
 
-// Collection item
+// Database item (within a server)
+export class DatabaseItem extends TreeItem {
+    constructor(
+        public readonly database: any,
+        public readonly connection: DatabaseConnection
+    ) {
+        super( database.name, vscode.TreeItemCollapsibleState.Collapsed );
+
+        this.tooltip = this.getTooltip();
+        this.description = this.getDescription();
+        this.iconPath = new vscode.ThemeIcon( 'database', new vscode.ThemeColor( 'charts.blue' ) );
+        this.contextValue = 'database';
+    }
+
+    private getTooltip(): string {
+        const { name, id } = this.database;
+        return `Database: ${name}\nID: ${id || 'N/A'}`;
+    }
+
+    private getDescription(): string {
+        return this.database.id || '';
+    }
+}
+
+// Collection item (within a database)
 export class CollectionItem extends TreeItem {
     constructor(
         public readonly collection: any,
-        public readonly connection: DatabaseConnection
+        public readonly connection: DatabaseConnection,
+        public readonly database: any
     ) {
-        super( collection.name, vscode.TreeItemCollapsibleState.None );
+        super( collection.name, vscode.TreeItemCollapsibleState.Collapsed );
 
         this.tooltip = this.getTooltip();
         this.description = this.getDescription();
@@ -217,7 +300,7 @@ export class CollectionItem extends TreeItem {
         const dimension = this.collection.dimension || 'Unknown';
         const vectorCount = this.collection.vectorCount || 0;
 
-        return `Collection: ${name}\nDimension: ${dimension}\nVectors: ${vectorCount}`;
+        return `Collection: ${name}\nDatabase: ${this.database.name}\nDimension: ${dimension}\nVectors: ${vectorCount}`;
     }
 
     private getDescription(): string {
@@ -231,6 +314,32 @@ export class CollectionItem extends TreeItem {
         }
 
         return '';
+    }
+}
+
+// Vector item (within a collection)
+export class VectorItem extends TreeItem {
+    private readonly vectorLabel: string;
+    private readonly tooltipText: string;
+    private readonly descriptionText: string;
+
+    constructor(
+        public readonly vector: any,
+        public readonly collectionName: string
+    ) {
+        const id = vector.id || vector._id || 'Unknown';
+        const dimension = vector.vector?.length || vector.embedding?.length;
+
+        super( `Vector ${id}`, vscode.TreeItemCollapsibleState.None );
+
+        this.vectorLabel = `Vector ${id}`;
+        this.tooltipText = `Vector ID: ${id}\nDimension: ${dimension || 'Unknown'}\nCollection: ${collectionName}`;
+        this.descriptionText = dimension ? `${dimension}D` : '';
+
+        this.tooltip = this.tooltipText;
+        this.description = this.descriptionText;
+        this.iconPath = new vscode.ThemeIcon( 'symbol-number', new vscode.ThemeColor( 'charts.green' ) );
+        this.contextValue = 'vector';
     }
 }
 
@@ -256,5 +365,4 @@ export interface DatabaseConnection {
     password?: string;
     isConnected: boolean;
     lastConnected?: Date;
-    collections?: any[];
 }

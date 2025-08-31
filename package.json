@@ -104,6 +104,48 @@
         "title": "Delete Collection",
         "icon": "$(trash)",
         "category": "Vector Database"
+      },
+      {
+        "command": "vex.viewVectors",
+        "title": "View Vectors",
+        "icon": "$(list-unordered)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.viewVectorDetails",
+        "title": "View Vector Details",
+        "icon": "$(eye)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.createDatabase",
+        "title": "Create Database",
+        "icon": "$(new-folder)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.deleteDatabase",
+        "title": "Delete Database",
+        "icon": "$(trash)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.refreshConnectionStatus",
+        "title": "Refresh Connection Status",
+        "icon": "$(refresh)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.refreshDatabases",
+        "title": "Refresh Databases",
+        "icon": "$(database)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.deleteServer",
+        "title": "Delete Server",
+        "icon": "$(trash)",
+        "category": "Vector Database"
       }
     ],
     "menus": {
@@ -127,17 +169,22 @@
           "command": "vex.refreshTreeView",
           "when": "view == vexVectorDBTree",
           "group": "navigation@2"
+        },
+        {
+          "command": "vex.refreshDatabases",
+          "when": "view == vexVectorDBTree",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
         {
           "command": "vex.connectToDatabase",
-          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "when": "view == vexVectorDBTree && viewItem == serverConnection",
           "group": "connection@1"
         },
         {
           "command": "vex.disconnectFromDatabase",
-          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "when": "view == vexVectorDBTree && viewItem == serverConnection",
           "group": "connection@2"
         },
         {
@@ -151,9 +198,29 @@
           "group": "management@2"
         },
         {
+          "command": "vex.deleteServer",
+          "when": "view == vexVectorDBTree && viewItem == serverConnection",
+          "group": "management@2"
+        },
+        {
+          "command": "vex.createDatabase",
+          "when": "view == vexVectorDBTree && viewItem == serverConnection",
+          "group": "databases@1"
+        },
+        {
+          "command": "vex.refreshConnectionStatus",
+          "when": "view == vexVectorDBTree && viewItem == serverConnection",
+          "group": "connection@3"
+        },
+        {
           "command": "vex.createCollection",
-          "when": "view == vexVectorDBTree && viewItem == databaseConnection",
+          "when": "view == vexVectorDBTree && viewItem == database",
           "group": "collections@1"
+        },
+        {
+          "command": "vex.deleteDatabase",
+          "when": "view == vexVectorDBTree && viewItem == database",
+          "group": "databases@2"
         },
         {
           "command": "vex.viewCollection",
@@ -179,6 +246,16 @@
           "command": "vex.deleteCollection",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@5"
+        },
+        {
+          "command": "vex.viewVectors",
+          "when": "view == vexVectorDBTree && viewItem == vectorsGroup",
+          "group": "vectors@1"
+        },
+        {
+          "command": "vex.viewVectorDetails",
+          "when": "view == vexVectorDBTree && viewItem == vector",
+          "group": "vector@1"
         }
       ]
     },

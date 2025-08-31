@@ -98,6 +98,62 @@ export class ConnectionManager {
         return this.activeConnections.has( connectionId );
     }
 
+    async listDatabases( connectionId: string ): Promise<any[]> {
+        const strategy = this.activeConnections.get( connectionId );
+        if ( !strategy ) {
+            throw new Error( 'Database not connected' );
+        }
+
+        try {
+            return await strategy.listDatabases();
+        } catch ( error ) {
+            console.error( 'Error listing databases:', error );
+            throw new Error( `Failed to list databases: ${error}` );
+        }
+    }
+
+    async createDatabase( connectionId: string, name: string ): Promise<void> {
+        const strategy = this.activeConnections.get( connectionId );
+        if ( !strategy ) {
+            throw new Error( 'Database not connected' );
+        }
+
+        try {
+            await strategy.createDatabase( name );
+        } catch ( error ) {
+            console.error( 'Error creating database:', error );
+            throw new Error( `Failed to create database: ${error}` );
+        }
+    }
+
+    async deleteDatabase( connectionId: string, name: string ): Promise<void> {
+        const strategy = this.activeConnections.get( connectionId );
+        if ( !strategy ) {
+            throw new Error( 'Database not connected' );
+        }
+
+        try {
+            await strategy.deleteDatabase( name );
+        } catch ( error ) {
+            console.error( 'Error deleting database:', error );
+            throw new Error( `Failed to delete database: ${error}` );
+        }
+    }
+
+    async useDatabase( connectionId: string, name: string ): Promise<void> {
+        const strategy = this.activeConnections.get( connectionId );
+        if ( !strategy ) {
+            throw new Error( 'Database not connected' );
+        }
+
+        try {
+            await strategy.useDatabase( name );
+        } catch ( error ) {
+            console.error( 'Error using database:', error );
+            throw new Error( `Failed to use database: ${error}` );
+        }
+    }
+
     async listCollections( connectionId: string ): Promise<any[]> {
         const strategy = this.activeConnections.get( connectionId );
         if ( !strategy ) {

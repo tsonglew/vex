@@ -1,0 +1,10 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+
+# Don't do
+
+1. do not write any doc or test code unless i ask to do.
+2. do not return any summary after a task unless i ask you to do.
