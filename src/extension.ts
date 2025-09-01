@@ -507,7 +507,7 @@ export function activate( context: vscode.ExtensionContext ) {
                     {
                         enableScripts: true,
                         retainContextWhenHidden: true,
-                        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
+                        localResourceRoots: [vscode.Uri.joinPath( context.extensionUri, 'media' )]
                     }
                 );
 
@@ -633,75 +633,75 @@ async function setupCollectionManagementWebview(
     connectionId: string,
     databaseName: string
 ) {
-    const scriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'collection-management.js'));
-    const styleResetUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'reset.css'));
-    const styleVSCodeUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'vscode.css'));
+    const scriptUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'collection-management.js' ) );
+    const styleResetUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'reset.css' ) );
+    const styleVSCodeUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'vscode.css' ) );
 
-    panel.webview.html = getCollectionManagementHTML(scriptUri, styleResetUri, styleVSCodeUri, collectionName);
+    panel.webview.html = getCollectionManagementHTML( scriptUri, styleResetUri, styleVSCodeUri, collectionName );
 
     // Handle messages from the webview
-    panel.webview.onDidReceiveMessage(async (data) => {
+    panel.webview.onDidReceiveMessage( async ( data ) => {
         try {
-            const strategy = (connectionManager as any).activeConnections.get(connectionId);
-            if (!strategy || strategy.type !== 'milvus') {
-                throw new Error('Collection management is only available for Milvus databases');
+            const strategy = ( connectionManager as any ).activeConnections.get( connectionId );
+            if ( !strategy || strategy.type !== 'milvus' ) {
+                throw new Error( 'Collection management is only available for Milvus databases' );
             }
 
-            switch (data.command) {
+            switch ( data.command ) {
                 case 'refresh':
-                    await loadCollectionData(panel, strategy, collectionName);
+                    await loadCollectionData( panel, strategy, collectionName );
                     break;
                 case 'createIndex':
-                    await strategy.createIndex(collectionName, data.fieldName, data.indexType, data.params);
-                    vscode.window.showInformationMessage(`Index created successfully on field "${data.fieldName}"`);
-                    await loadCollectionData(panel, strategy, collectionName);
+                    await strategy.createIndex( collectionName, data.fieldName, data.indexType, data.params );
+                    vscode.window.showInformationMessage( `Index created successfully on field "${data.fieldName}"` );
+                    await loadCollectionData( panel, strategy, collectionName );
                     break;
                 case 'dropIndex':
-                    await strategy.dropIndex(collectionName, data.indexName);
-                    vscode.window.showInformationMessage(`Index "${data.indexName}" dropped successfully`);
-                    await loadCollectionData(panel, strategy, collectionName);
+                    await strategy.dropIndex( collectionName, data.indexName );
+                    vscode.window.showInformationMessage( `Index "${data.indexName}" dropped successfully` );
+                    await loadCollectionData( panel, strategy, collectionName );
                     break;
                 case 'createPartition':
-                    await strategy.createPartition(collectionName, data.partitionName);
-                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" created successfully`);
-                    await loadCollectionData(panel, strategy, collectionName);
+                    await strategy.createPartition( collectionName, data.partitionName );
+                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" created successfully` );
+                    await loadCollectionData( panel, strategy, collectionName );
                     break;
                 case 'dropPartition':
-                    await strategy.dropPartition(collectionName, data.partitionName);
-                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" dropped successfully`);
-                    await loadCollectionData(panel, strategy, collectionName);
+                    await strategy.dropPartition( collectionName, data.partitionName );
+                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" dropped successfully` );
+                    await loadCollectionData( panel, strategy, collectionName );
                     break;
                 case 'loadPartition':
-                    await strategy.loadPartition(collectionName, data.partitionName);
-                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" loaded successfully`);
-                    await loadCollectionData(panel, strategy, collectionName);
+                    await strategy.loadPartition( collectionName, data.partitionName );
+                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" loaded successfully` );
+                    await loadCollectionData( panel, strategy, collectionName );
                     break;
                 case 'releasePartition':
-                    await strategy.releasePartition(collectionName, data.partitionName);
-                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" released successfully`);
-                    await loadCollectionData(panel, strategy, collectionName);
+                    await strategy.releasePartition( collectionName, data.partitionName );
+                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" released successfully` );
+                    await loadCollectionData( panel, strategy, collectionName );
                     break;
             }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Operation failed: ${error}`);
+        } catch ( error ) {
+            vscode.window.showErrorMessage( `Operation failed: ${error}` );
         }
-    });
+    } );
 
     // Load initial data
-    const strategy = (connectionManager as any).activeConnections.get(connectionId);
-    if (strategy && strategy.type === 'milvus') {
-        await loadCollectionData(panel, strategy, collectionName);
+    const strategy = ( connectionManager as any ).activeConnections.get( connectionId );
+    if ( strategy && strategy.type === 'milvus' ) {
+        await loadCollectionData( panel, strategy, collectionName );
     }
 }
 
-async function loadCollectionData(panel: vscode.WebviewPanel, strategy: any, collectionName: string) {
+async function loadCollectionData( panel: vscode.WebviewPanel, strategy: any, collectionName: string ) {
     try {
-        const collectionInfo = await strategy.getCollectionInfo(collectionName);
-        const collectionStats = await strategy.getCollectionStatistics(collectionName);
-        const indexes = await strategy.getIndexes(collectionName);
-        const partitions = await strategy.getPartitions(collectionName);
+        const collectionInfo = await strategy.getCollectionInfo( collectionName );
+        const collectionStats = await strategy.getCollectionStatistics( collectionName );
+        const indexes = await strategy.getIndexes( collectionName );
+        const partitions = await strategy.getPartitions( collectionName );
 
-        panel.webview.postMessage({
+        panel.webview.postMessage( {
             command: 'updateCollectionData',
             data: {
                 collectionInfo,
@@ -709,16 +709,16 @@ async function loadCollectionData(panel: vscode.WebviewPanel, strategy: any, col
                 indexes,
                 partitions
             }
-        });
-    } catch (error) {
-        panel.webview.postMessage({
+        } );
+    } catch ( error ) {
+        panel.webview.postMessage( {
             command: 'showError',
             message: `Failed to load collection data: ${error}`
-        });
+        } );
     }
 }
 
-function getCollectionManagementHTML(scriptUri: vscode.Uri, styleResetUri: vscode.Uri, styleVSCodeUri: vscode.Uri, collectionName: string): string {
+function getCollectionManagementHTML( scriptUri: vscode.Uri, styleResetUri: vscode.Uri, styleVSCodeUri: vscode.Uri, collectionName: string ): string {
     return `<!DOCTYPE html>
         <html lang="en">
         <head>

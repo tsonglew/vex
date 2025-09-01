@@ -741,6 +741,8 @@ cd docker && docker-compose up -d` );
 
         try {
             const stats = await this.client.getCollectionStatistics( { collection_name: collection } );
+            console.log( 'Raw collection statistics:', JSON.stringify( stats, null, 2 ) );
+            
             const parsedStats: any = {};
 
             if ( stats.stats ) {
@@ -748,13 +750,59 @@ cd docker && docker-compose up -d` );
                     parsedStats[stat.key] = stat.value;
                 } );
             }
+            
+            console.log( 'Parsed statistics keys:', Object.keys( parsedStats ) );
+            console.log( 'Parsed statistics values:', parsedStats );
+
+            // Try different possible key names for better compatibility
+            const rowCount = parseInt( 
+                parsedStats.row_count || 
+                parsedStats['row_count'] || 
+                parsedStats.num_entities || 
+                parsedStats['num_entities'] || 
+                '0' 
+            );
+
+            // For segments, try various possible key names
+            const indexedSegments = parseInt( 
+                parsedStats.indexed_segments || 
+                parsedStats['indexed_segments'] ||
+                parsedStats.indexed_segment_count ||
+                parsedStats['indexed_segment_count'] ||
+                '0' 
+            );
+
+            const totalSegments = parseInt( 
+                parsedStats.total_segments || 
+                parsedStats['total_segments'] ||
+                parsedStats.total_segment_count ||
+                parsedStats['total_segment_count'] ||
+                parsedStats.segment_count ||
+                parsedStats['segment_count'] ||
+                '0' 
+            );
+
+            // For memory and disk, try various formats
+            const memorySize = 
+                parsedStats.memory_size || 
+                parsedStats['memory_size'] ||
+                parsedStats.memory_usage ||
+                parsedStats['memory_usage'] ||
+                '0';
+
+            const diskSize = 
+                parsedStats.disk_size || 
+                parsedStats['disk_size'] ||
+                parsedStats.disk_usage ||
+                parsedStats['disk_usage'] ||
+                '0';
 
             return {
-                rowCount: parseInt( parsedStats.row_count || '0' ),
-                indexedSegments: parseInt( parsedStats.indexed_segments || '0' ),
-                totalSegments: parseInt( parsedStats.total_segments || '0' ),
-                memorySize: parsedStats.memory_size || '0',
-                diskSize: parsedStats.disk_size || '0'
+                rowCount,
+                indexedSegments,
+                totalSegments,
+                memorySize,
+                diskSize
             };
         } catch ( error ) {
             console.error( 'Error getting collection statistics:', error );

@@ -276,13 +276,7 @@
           "icon": "$(database)"
         }
       ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "vexVectorDBTree",
-        "contents": "No database connections found.\n[Add Database Connection](command:vex.addConnection)"
-      }
-    ]
+    }
   },
   "dependencies": {
     "@zilliz/milvus2-sdk-node": "^2.6.0",
