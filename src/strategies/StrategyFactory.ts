@@ -12,21 +12,21 @@ export class StrategyFactory {
             case 'chromadb':
                 return new ChromaDBStrategy();
             case 'pinecone':
-                return new PlaceholderStrategy('pinecone');
+                return new PlaceholderStrategy( 'pinecone' );
             case 'weaviate':
-                return new PlaceholderStrategy('weaviate');
+                return new PlaceholderStrategy( 'weaviate' );
             case 'qdrant':
-                return new PlaceholderStrategy('qdrant');
+                return new PlaceholderStrategy( 'qdrant' );
             case 'faiss':
-                return new PlaceholderStrategy('faiss');
+                return new PlaceholderStrategy( 'faiss' );
             case 'elasticsearch':
-                return new PlaceholderStrategy('elasticsearch');
+                return new PlaceholderStrategy( 'elasticsearch' );
             case 'vespa':
-                return new PlaceholderStrategy('vespa');
+                return new PlaceholderStrategy( 'vespa' );
             case 'redis':
-                return new PlaceholderStrategy('redis');
+                return new PlaceholderStrategy( 'redis' );
             case 'pgvector':
-                return new PlaceholderStrategy('pgvector');
+                return new PlaceholderStrategy( 'pgvector' );
             default:
                 throw new Error( `Unsupported database type: ${type}` );
         }

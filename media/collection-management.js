@@ -1,12 +1,12 @@
-(function() {
+(function () {
     const vscode = acquireVsCodeApi();
-    
+
     let currentData = null;
 
     // Listen for messages from the extension
     window.addEventListener('message', event => {
         const message = event.data;
-        
+
         switch (message.command) {
             case 'updateCollectionData':
                 currentData = message.data;
@@ -18,7 +18,7 @@
         }
     });
 
-    function updateUI() {
+    function updateUI () {
         if (!currentData) return;
 
         const content = document.getElementById('content');
@@ -162,9 +162,9 @@
                             <select id="field-select">
                                 <option value="">Select Field</option>
                                 ${currentData.collectionInfo.fields
-                                    .filter(field => field.data_type === 101) // FloatVector
-                                    .map(field => `<option value="${field.name}">${field.name} (${field.type_params?.dim || field.dim}D)</option>`)
-                                    .join('')}
+                .filter(field => field.data_type === 101) // FloatVector
+                .map(field => `<option value="${field.name}">${field.name} (${field.type_params?.dim || field.dim}D)</option>`)
+                .join('')}
                             </select>
                             <select id="index-type-select">
                                 <option value="">Select Index Type</option>
@@ -233,7 +233,7 @@
         `;
     }
 
-    function showError(message) {
+    function showError (message) {
         const content = document.getElementById('content');
         content.innerHTML = `
             <div class="error">
@@ -243,18 +243,18 @@
         `;
     }
 
-    function toggleCollapse(element) {
+    function toggleCollapse (element) {
         element.classList.toggle('collapsed');
     }
 
-    function refreshData() {
+    function refreshData () {
         vscode.postMessage({ command: 'refresh' });
     }
 
-    function createIndex() {
+    function createIndex () {
         const fieldName = document.getElementById('field-select').value;
         const indexType = document.getElementById('index-type-select').value;
-        
+
         if (!fieldName || !indexType) {
             alert('Please select both field and index type');
             return;
@@ -269,7 +269,7 @@
         });
     }
 
-    function dropIndex(indexName) {
+    function dropIndex (indexName) {
         if (confirm(`Are you sure you want to drop the index "${indexName}"?`)) {
             vscode.postMessage({
                 command: 'dropIndex',
@@ -278,9 +278,9 @@
         }
     }
 
-    function createPartition() {
+    function createPartition () {
         const partitionName = document.getElementById('partition-name-input').value.trim();
-        
+
         if (!partitionName) {
             alert('Please enter a partition name');
             return;
@@ -290,11 +290,11 @@
             command: 'createPartition',
             partitionName: partitionName
         });
-        
+
         document.getElementById('partition-name-input').value = '';
     }
 
-    function dropPartition(partitionName) {
+    function dropPartition (partitionName) {
         if (confirm(`Are you sure you want to drop the partition "${partitionName}"?`)) {
             vscode.postMessage({
                 command: 'dropPartition',
@@ -303,21 +303,21 @@
         }
     }
 
-    function loadPartition(partitionName) {
+    function loadPartition (partitionName) {
         vscode.postMessage({
             command: 'loadPartition',
             partitionName: partitionName
         });
     }
 
-    function releasePartition(partitionName) {
+    function releasePartition (partitionName) {
         vscode.postMessage({
             command: 'releasePartition',
             partitionName: partitionName
         });
     }
 
-    function getDataTypeName(dataType) {
+    function getDataTypeName (dataType) {
         const typeMap = {
             1: 'Bool',
             2: 'Int8',
@@ -334,11 +334,11 @@
         return typeMap[dataType] || `Unknown (${dataType})`;
     }
 
-    function formatNumber(num) {
+    function formatNumber (num) {
         return new Intl.NumberFormat().format(parseInt(num) || 0);
     }
 
-    function formatBytes(bytes) {
+    function formatBytes (bytes) {
         const size = parseInt(bytes) || 0;
         if (size === 0) return '0 B';
         const k = 1024;
@@ -347,14 +347,14 @@
         return parseFloat((size / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    function formatIndexParams(params) {
+    function formatIndexParams (params) {
         if (!params || typeof params !== 'object') return '-';
         return Object.entries(params)
             .map(([key, value]) => `${key}: ${value}`)
             .join(', ');
     }
 
-    function getDefaultIndexParams(indexType) {
+    function getDefaultIndexParams (indexType) {
         const defaultParams = {
             'FLAT': {},
             'IVF_FLAT': { nlist: 1024 },

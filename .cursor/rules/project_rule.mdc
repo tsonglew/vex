@@ -1,8 +1,9 @@
 ---
-description:
-globs:
-alwaysApply: false
+alwaysApply: true
 ---
+# Should do
+
+1. create a new git commit after every task finished, but do not push it to the remote repository.
 
 # Don't do
 

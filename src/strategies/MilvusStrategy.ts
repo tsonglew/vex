@@ -716,9 +716,9 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            const description = await this.client.describeCollection({ collection_name: collection });
-            const loadState = await this.client.getLoadState({ collection_name: collection });
-            
+            const description = await this.client.describeCollection( { collection_name: collection } );
+            const loadState = await this.client.getLoadState( { collection_name: collection } );
+
             return {
                 name: collection,
                 description: description.schema?.description || '',
@@ -726,7 +726,7 @@ cd docker && docker-compose up -d` );
                 consistencyLevel: description.consistency_level || 'Session',
                 loadState: loadState.state || 'Unknown',
                 createdTime: description.created_utc_timestamp || null,
-                autoId: description.schema?.fields?.some((field: any) => field.auto_id) || false
+                autoId: description.schema?.fields?.some( ( field: any ) => field.auto_id ) || false
             };
         } catch ( error ) {
             console.error( 'Error getting collection info:', error );
@@ -740,19 +740,19 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            const stats = await this.client.getCollectionStatistics({ collection_name: collection });
+            const stats = await this.client.getCollectionStatistics( { collection_name: collection } );
             const parsedStats: any = {};
-            
-            if (stats.stats) {
-                stats.stats.forEach((stat: any) => {
+
+            if ( stats.stats ) {
+                stats.stats.forEach( ( stat: any ) => {
                     parsedStats[stat.key] = stat.value;
-                });
+                } );
             }
-            
+
             return {
-                rowCount: parseInt(parsedStats.row_count || '0'),
-                indexedSegments: parseInt(parsedStats.indexed_segments || '0'),
-                totalSegments: parseInt(parsedStats.total_segments || '0'),
+                rowCount: parseInt( parsedStats.row_count || '0' ),
+                indexedSegments: parseInt( parsedStats.indexed_segments || '0' ),
+                totalSegments: parseInt( parsedStats.total_segments || '0' ),
                 memorySize: parsedStats.memory_size || '0',
                 diskSize: parsedStats.disk_size || '0'
             };
@@ -768,8 +768,8 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            const indexes = await this.client.describeIndex({ collection_name: collection });
-            return Array.isArray(indexes) ? indexes : [indexes];
+            const indexes = await this.client.describeIndex( { collection_name: collection } );
+            return Array.isArray( indexes ) ? indexes : [indexes];
         } catch ( error ) {
             console.error( 'Error getting indexes:', error );
             return [];
@@ -782,12 +782,12 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            const partitions = await this.client.showPartitions({ collection_name: collection });
-            return partitions.partition_names?.map((name: string, index: number) => ({
+            const partitions = await this.client.showPartitions( { collection_name: collection } );
+            return partitions.partition_names?.map( ( name: string, index: number ) => ( {
                 name: name,
                 id: partitions.partitionIDs?.[index] || index,
                 createdTime: partitions.created_utc_timestamps?.[index] || null
-            })) || [];
+            } ) ) || [];
         } catch ( error ) {
             console.error( 'Error getting partitions:', error );
             return [];
@@ -800,12 +800,12 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            await this.client.createIndex({
+            await this.client.createIndex( {
                 collection_name: collection,
                 field_name: fieldName,
                 index_type: indexType as any,
                 params: params || {}
-            });
+            } );
             console.log( `Index created on field "${fieldName}" with type "${indexType}"` );
         } catch ( error ) {
             console.error( 'Error creating index:', error );
@@ -819,10 +819,10 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            await this.client.dropIndex({
+            await this.client.dropIndex( {
                 collection_name: collection,
                 index_name: indexName
-            });
+            } );
             console.log( `Index "${indexName}" dropped successfully` );
         } catch ( error ) {
             console.error( 'Error dropping index:', error );
@@ -836,10 +836,10 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            await this.client.createPartition({
+            await this.client.createPartition( {
                 collection_name: collection,
                 partition_name: partitionName
-            });
+            } );
             console.log( `Partition "${partitionName}" created successfully` );
         } catch ( error ) {
             console.error( 'Error creating partition:', error );
@@ -853,10 +853,10 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            await this.client.dropPartition({
+            await this.client.dropPartition( {
                 collection_name: collection,
                 partition_name: partitionName
-            });
+            } );
             console.log( `Partition "${partitionName}" dropped successfully` );
         } catch ( error ) {
             console.error( 'Error dropping partition:', error );
@@ -870,10 +870,10 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            await this.client.loadPartitions({
+            await this.client.loadPartitions( {
                 collection_name: collection,
                 partition_names: [partitionName]
-            });
+            } );
             console.log( `Partition "${partitionName}" loaded successfully` );
         } catch ( error ) {
             console.error( 'Error loading partition:', error );
@@ -887,10 +887,10 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            await this.client.releasePartitions({
+            await this.client.releasePartitions( {
                 collection_name: collection,
                 partition_names: [partitionName]
-            });
+            } );
             console.log( `Partition "${partitionName}" released successfully` );
         } catch ( error ) {
             console.error( 'Error releasing partition:', error );

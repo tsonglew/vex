@@ -76,12 +76,6 @@
         "category": "Vector Database"
       },
       {
-        "command": "vex.viewCollection",
-        "title": "View Collection Details",
-        "icon": "$(eye)",
-        "category": "Vector Database"
-      },
-      {
         "command": "vex.insertVectors",
         "title": "Insert Vectors",
         "icon": "$(add)",
@@ -229,34 +223,29 @@
           "group": "databases@2"
         },
         {
-          "command": "vex.viewCollection",
+          "command": "vex.listVectors",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@1"
         },
         {
-          "command": "vex.listVectors",
+          "command": "vex.insertVectors",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@2"
         },
         {
-          "command": "vex.insertVectors",
+          "command": "vex.searchVectors",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@3"
         },
         {
-          "command": "vex.searchVectors",
+          "command": "vex.manageCollection",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@4"
         },
         {
-          "command": "vex.manageCollection",
-          "when": "view == vexVectorDBTree && viewItem == collection",
-          "group": "collection@5"
-        },
-        {
           "command": "vex.deleteCollection",
           "when": "view == vexVectorDBTree && viewItem == collection",
-          "group": "collection@6"
+          "group": "collection@5"
         },
         {
           "command": "vex.viewVectors",
@@ -278,7 +267,7 @@
           "when": "true"
         },
         {
-          "id": "vex.collectionManagement",
+          "id": "vex.vectorsView",
           "name": "Collection Management",
           "type": "webview",
           "when": "true"

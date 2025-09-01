@@ -4,7 +4,6 @@ import { VectorDBTreeProvider, DatabaseConnection } from './vectorDBTreeProvider
 import { DataViewerPanel } from './dataViewerPanel';
 import { ConnectionManager } from './connectionManager';
 import { VectorWebviewProvider } from './webview/VectorWebviewProvider';
-import { CollectionManagementWebviewProvider } from './webview/CollectionManagementWebviewProvider';
 
 // This method is called when your extension is activated
 export function activate( context: vscode.ExtensionContext ) {
@@ -17,18 +16,25 @@ export function activate( context: vscode.ExtensionContext ) {
     const treeProvider = new VectorDBTreeProvider( connectionManager, context );
 
     // Register the tree data provider
-    vscode.window.registerTreeDataProvider( 'vexVectorDBTree', treeProvider );
+    const treeView = vscode.window.createTreeView( 'vexVectorDBTree', { treeDataProvider: treeProvider } );
 
-    // Register the vectors webview provider
-    const vectorsWebviewProvider = new VectorWebviewProvider( context.extensionUri );
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider( 'vex.vectorsView', vectorsWebviewProvider )
-    );
+    // Handle double-click on tree items
+    treeView.onDidChangeSelection( async ( e ) => {
+        if ( e.selection && e.selection.length > 0 ) {
+            const item = e.selection[0];
+
+            // Check if it's a collection item
+            if ( item.contextValue === 'collection' ) {
+                // Trigger collection management
+                await vscode.commands.executeCommand( 'vex.manageCollection', item );
+            }
+        }
+    } );
 
     // Register the collection management webview provider
-    const collectionManagementWebviewProvider = new CollectionManagementWebviewProvider( context.extensionUri, connectionManager );
+    const collectionManagementWebviewProvider = new VectorWebviewProvider( context.extensionUri, connectionManager );
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider( 'vex.collectionManagement', collectionManagementWebviewProvider )
+        vscode.window.registerWebviewViewProvider( 'vex.vectorsView', collectionManagementWebviewProvider )
     );
 
     // Register commands
@@ -487,7 +493,7 @@ export function activate( context: vscode.ExtensionContext ) {
         }
     } );
 
-    // Command to manage collection (Milvus only)
+    // Command to manage collection (Milvus only) - triggered by double-click
     const manageCollectionCommand = vscode.commands.registerCommand( 'vex.manageCollection', async ( item?: any ) => {
         if ( item?.collection && item?.connection ) {
             try {
@@ -506,7 +512,7 @@ export function activate( context: vscode.ExtensionContext ) {
                 );
 
                 // Focus the collection management webview
-                await vscode.commands.executeCommand( 'vex.collectionManagement.focus' );
+                await vscode.commands.executeCommand( 'vex.vectorsView.focus' );
             } catch ( error ) {
                 vscode.window.showErrorMessage( `Failed to open collection management: ${error}` );
             }
