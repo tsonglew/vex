@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { VectorDBTreeProvider, DatabaseConnection } from './vectorDBTreeProvider';
 import { DataViewerPanel } from './dataViewerPanel';
 import { ConnectionManager } from './connectionManager';
-import { VectorWebviewProvider } from './webview/VectorWebviewProvider';
 
 // This method is called when your extension is activated
 export function activate( context: vscode.ExtensionContext ) {
@@ -31,11 +30,7 @@ export function activate( context: vscode.ExtensionContext ) {
         }
     } );
 
-    // Register the collection management webview provider
-    const collectionManagementWebviewProvider = new VectorWebviewProvider( context.extensionUri, connectionManager );
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider( 'vex.vectorsView', collectionManagementWebviewProvider )
-    );
+    // Collection management will be handled via tab-based webview panels
 
     // Register commands
     const refreshTreeViewCommand = vscode.commands.registerCommand( 'vex.refreshTreeView', () => {
@@ -493,7 +488,7 @@ export function activate( context: vscode.ExtensionContext ) {
         }
     } );
 
-    // Command to manage collection (Milvus only) - triggered by double-click
+    // Command to manage collection (Milvus only) - opens in tab
     const manageCollectionCommand = vscode.commands.registerCommand( 'vex.manageCollection', async ( item?: any ) => {
         if ( item?.collection && item?.connection ) {
             try {
@@ -504,15 +499,28 @@ export function activate( context: vscode.ExtensionContext ) {
                     return;
                 }
 
-                // Set the collection in the webview
-                collectionManagementWebviewProvider.setCollection(
+                // Create a new webview panel (tab) for collection management
+                const panel = vscode.window.createWebviewPanel(
+                    'collectionManagement',
+                    `Manage Collection: ${item.collection.name}`,
+                    vscode.ViewColumn.One,
+                    {
+                        enableScripts: true,
+                        retainContextWhenHidden: true,
+                        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
+                    }
+                );
+
+                // Set up the webview content and messaging
+                await setupCollectionManagementWebview(
+                    panel,
+                    context,
+                    connectionManager,
                     item.collection.name,
                     item.connection.id,
                     item.database?.name || 'default'
                 );
 
-                // Focus the collection management webview
-                await vscode.commands.executeCommand( 'vex.vectorsView.focus' );
             } catch ( error ) {
                 vscode.window.showErrorMessage( `Failed to open collection management: ${error}` );
             }
@@ -615,6 +623,299 @@ function getVectorsWebviewHTML( webview: vscode.Webview, vectors: any[], collect
 // Helper functions
 function generateId(): string {
     return Math.random().toString( 36 ).substring( 2, 9 );
+}
+
+async function setupCollectionManagementWebview(
+    panel: vscode.WebviewPanel,
+    context: vscode.ExtensionContext,
+    connectionManager: ConnectionManager,
+    collectionName: string,
+    connectionId: string,
+    databaseName: string
+) {
+    const scriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'collection-management.js'));
+    const styleResetUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'reset.css'));
+    const styleVSCodeUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'vscode.css'));
+
+    panel.webview.html = getCollectionManagementHTML(scriptUri, styleResetUri, styleVSCodeUri, collectionName);
+
+    // Handle messages from the webview
+    panel.webview.onDidReceiveMessage(async (data) => {
+        try {
+            const strategy = (connectionManager as any).activeConnections.get(connectionId);
+            if (!strategy || strategy.type !== 'milvus') {
+                throw new Error('Collection management is only available for Milvus databases');
+            }
+
+            switch (data.command) {
+                case 'refresh':
+                    await loadCollectionData(panel, strategy, collectionName);
+                    break;
+                case 'createIndex':
+                    await strategy.createIndex(collectionName, data.fieldName, data.indexType, data.params);
+                    vscode.window.showInformationMessage(`Index created successfully on field "${data.fieldName}"`);
+                    await loadCollectionData(panel, strategy, collectionName);
+                    break;
+                case 'dropIndex':
+                    await strategy.dropIndex(collectionName, data.indexName);
+                    vscode.window.showInformationMessage(`Index "${data.indexName}" dropped successfully`);
+                    await loadCollectionData(panel, strategy, collectionName);
+                    break;
+                case 'createPartition':
+                    await strategy.createPartition(collectionName, data.partitionName);
+                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" created successfully`);
+                    await loadCollectionData(panel, strategy, collectionName);
+                    break;
+                case 'dropPartition':
+                    await strategy.dropPartition(collectionName, data.partitionName);
+                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" dropped successfully`);
+                    await loadCollectionData(panel, strategy, collectionName);
+                    break;
+                case 'loadPartition':
+                    await strategy.loadPartition(collectionName, data.partitionName);
+                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" loaded successfully`);
+                    await loadCollectionData(panel, strategy, collectionName);
+                    break;
+                case 'releasePartition':
+                    await strategy.releasePartition(collectionName, data.partitionName);
+                    vscode.window.showInformationMessage(`Partition "${data.partitionName}" released successfully`);
+                    await loadCollectionData(panel, strategy, collectionName);
+                    break;
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Operation failed: ${error}`);
+        }
+    });
+
+    // Load initial data
+    const strategy = (connectionManager as any).activeConnections.get(connectionId);
+    if (strategy && strategy.type === 'milvus') {
+        await loadCollectionData(panel, strategy, collectionName);
+    }
+}
+
+async function loadCollectionData(panel: vscode.WebviewPanel, strategy: any, collectionName: string) {
+    try {
+        const collectionInfo = await strategy.getCollectionInfo(collectionName);
+        const collectionStats = await strategy.getCollectionStatistics(collectionName);
+        const indexes = await strategy.getIndexes(collectionName);
+        const partitions = await strategy.getPartitions(collectionName);
+
+        panel.webview.postMessage({
+            command: 'updateCollectionData',
+            data: {
+                collectionInfo,
+                collectionStats,
+                indexes,
+                partitions
+            }
+        });
+    } catch (error) {
+        panel.webview.postMessage({
+            command: 'showError',
+            message: `Failed to load collection data: ${error}`
+        });
+    }
+}
+
+function getCollectionManagementHTML(scriptUri: vscode.Uri, styleResetUri: vscode.Uri, styleVSCodeUri: vscode.Uri, collectionName: string): string {
+    return `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="${styleResetUri}" rel="stylesheet">
+            <link href="${styleVSCodeUri}" rel="stylesheet">
+            <title>Collection Management - ${collectionName}</title>
+            <style>
+                body {
+                    padding: 20px;
+                    font-family: var(--vscode-font-family);
+                    font-size: var(--vscode-font-size);
+                    color: var(--vscode-foreground);
+                }
+                
+                .section {
+                    margin-bottom: 20px;
+                    border: 1px solid var(--vscode-widget-border);
+                    border-radius: 4px;
+                    padding: 15px;
+                }
+                
+                .section-header {
+                    font-weight: bold;
+                    font-size: 1.1em;
+                    margin-bottom: 10px;
+                    color: var(--vscode-textLink-foreground);
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                
+                .stats-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                    gap: 10px;
+                }
+                
+                .stat-item {
+                    background: var(--vscode-editor-background);
+                    padding: 8px 12px;
+                    border-radius: 3px;
+                    border: 1px solid var(--vscode-input-border);
+                }
+                
+                .stat-label {
+                    font-size: 0.85em;
+                    color: var(--vscode-descriptionForeground);
+                    margin-bottom: 2px;
+                }
+                
+                .stat-value {
+                    font-weight: bold;
+                    font-size: 1.1em;
+                }
+                
+                .fields-table, .indexes-table, .partitions-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 10px;
+                }
+                
+                .fields-table th, .fields-table td,
+                .indexes-table th, .indexes-table td,
+                .partitions-table th, .partitions-table td {
+                    border: 1px solid var(--vscode-widget-border);
+                    padding: 8px;
+                    text-align: left;
+                }
+                
+                .fields-table th, .indexes-table th, .partitions-table th {
+                    background: var(--vscode-editor-background);
+                    font-weight: bold;
+                }
+                
+                .action-buttons {
+                    margin-top: 10px;
+                    display: flex;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                }
+                
+                .btn {
+                    background: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                    border: none;
+                    padding: 6px 12px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    font-size: 0.9em;
+                }
+                
+                .btn:hover {
+                    background: var(--vscode-button-hoverBackground);
+                }
+                
+                .btn-secondary {
+                    background: var(--vscode-button-secondaryBackground);
+                    color: var(--vscode-button-secondaryForeground);
+                }
+                
+                .btn-secondary:hover {
+                    background: var(--vscode-button-secondaryHoverBackground);
+                }
+                
+                .btn-danger {
+                    background: var(--vscode-testing-iconFailed);
+                    color: white;
+                }
+                
+                .input-row {
+                    display: flex;
+                    gap: 8px;
+                    align-items: center;
+                    margin-top: 8px;
+                }
+                
+                .input-row input, .input-row select {
+                    background: var(--vscode-input-background);
+                    color: var(--vscode-input-foreground);
+                    border: 1px solid var(--vscode-input-border);
+                    padding: 4px 8px;
+                    border-radius: 3px;
+                }
+                
+                .loading {
+                    text-align: center;
+                    padding: 40px;
+                    color: var(--vscode-descriptionForeground);
+                }
+                
+                .error {
+                    background: var(--vscode-inputValidation-errorBackground);
+                    border: 1px solid var(--vscode-inputValidation-errorBorder);
+                    color: var(--vscode-errorForeground);
+                    padding: 10px;
+                    border-radius: 3px;
+                    margin: 10px 0;
+                }
+                
+                .collapsible {
+                    cursor: pointer;
+                    user-select: none;
+                }
+                
+                .collapsible::before {
+                    content: '▼';
+                    margin-right: 5px;
+                    transition: transform 0.2s;
+                }
+                
+                .collapsible.collapsed::before {
+                    transform: rotate(-90deg);
+                }
+                
+                .collapsible-content {
+                    margin-top: 10px;
+                }
+                
+                .collapsible.collapsed + .collapsible-content {
+                    display: none;
+                }
+
+                .page-header {
+                    border-bottom: 1px solid var(--vscode-widget-border);
+                    padding-bottom: 15px;
+                    margin-bottom: 20px;
+                }
+
+                .page-title {
+                    font-size: 1.5em;
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                    color: var(--vscode-textLink-foreground);
+                }
+
+                .page-subtitle {
+                    color: var(--vscode-descriptionForeground);
+                    font-size: 0.9em;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="page-header">
+                <div class="page-title">📊 Collection Management</div>
+                <div class="page-subtitle">Managing collection: ${collectionName}</div>
+            </div>
+            
+            <div id="content">
+                <div class="loading">
+                    Loading collection data...
+                </div>
+            </div>
+            <script src="${scriptUri}"></script>
+        </body>
+        </html>`;
 }
 
 function getDefaultPort( type: string ): string {

@@ -265,12 +265,6 @@
           "id": "vexVectorDBTree",
           "name": "Vector Databases",
           "when": "true"
-        },
-        {
-          "id": "vex.vectorsView",
-          "name": "Collection Management",
-          "type": "webview",
-          "when": "true"
         }
       ]
     },
