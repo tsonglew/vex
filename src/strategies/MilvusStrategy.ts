@@ -740,62 +740,99 @@ cd docker && docker-compose up -d` );
         }
 
         try {
-            const stats = await this.client.getCollectionStatistics( { collection_name: collection } );
-            console.log( 'Raw collection statistics:', JSON.stringify( stats, null, 2 ) );
-            
-            const parsedStats: any = {};
+            // Step 1: Ensure collection is loaded (required for accurate statistics)
+            await this.ensureCollectionLoaded( collection );
 
-            if ( stats.stats ) {
+            // Step 2: Flush data to disk to ensure all data is persisted
+            try {
+                console.log( `Flushing collection "${collection}" to ensure accurate statistics...` );
+                await this.client.flush( { collection_names: [collection] } );
+                console.log( `Collection "${collection}" flushed successfully` );
+            } catch ( flushError ) {
+                console.warn( 'Failed to flush collection, statistics might be incomplete:', flushError );
+            }
+
+            // Step 3: Get collection statistics
+            const stats = await this.client.getCollectionStatistics( { collection_name: collection } );
+            console.log( 'Raw collection statistics response:', JSON.stringify( stats, null, 2 ) );
+            
+            let parsedStats: any = {};
+
+            // Handle different response formats
+            if ( stats.stats && Array.isArray( stats.stats ) ) {
                 stats.stats.forEach( ( stat: any ) => {
-                    parsedStats[stat.key] = stat.value;
+                    if ( stat.key && stat.value !== undefined ) {
+                        parsedStats[stat.key] = stat.value;
+                    }
                 } );
+            } else if ( stats.data ) {
+                // Alternative response format
+                parsedStats = stats.data;
+            } else if ( typeof stats === 'object' && stats !== null ) {
+                // Direct response format
+                parsedStats = stats;
             }
             
-            console.log( 'Parsed statistics keys:', Object.keys( parsedStats ) );
-            console.log( 'Parsed statistics values:', parsedStats );
+            console.log( 'Parsed statistics object:', parsedStats );
 
-            // Try different possible key names for better compatibility
-            const rowCount = parseInt( 
-                parsedStats.row_count || 
-                parsedStats['row_count'] || 
-                parsedStats.num_entities || 
-                parsedStats['num_entities'] || 
-                '0' 
-            );
+            // Step 4: Get row count using alternative method if statistics are empty
+            let rowCount = 0;
+            const rowCountKeys = ['row_count', 'num_entities', 'entity_num'];
+            for ( const key of rowCountKeys ) {
+                if ( parsedStats[key] ) {
+                    rowCount = parseInt( String( parsedStats[key] ) ) || 0;
+                    break;
+                }
+            }
 
-            // For segments, try various possible key names
-            const indexedSegments = parseInt( 
-                parsedStats.indexed_segments || 
-                parsedStats['indexed_segments'] ||
+            // If still zero, try querying for count
+            if ( rowCount === 0 ) {
+                try {
+                    console.log( 'Statistics show zero count, attempting direct count query...' );
+                    const countResult = await this.client.query( {
+                        collection_name: collection,
+                        output_fields: ['count(*)']
+                    } );
+                    if ( countResult.data && countResult.data.length > 0 ) {
+                        rowCount = parseInt( countResult.data[0]['count(*)'] ) || 0;
+                        console.log( `Got row count from direct query: ${rowCount}` );
+                    }
+                } catch ( countError ) {
+                    console.warn( 'Direct count query failed:', countError );
+                }
+            }
+
+            // Parse other statistics with multiple key attempts
+            const indexedSegments = parseInt( String(
+                parsedStats.indexed_segments ||
                 parsedStats.indexed_segment_count ||
-                parsedStats['indexed_segment_count'] ||
-                '0' 
-            );
+                parsedStats['indexed segments'] ||
+                '0'
+            ) );
 
-            const totalSegments = parseInt( 
-                parsedStats.total_segments || 
-                parsedStats['total_segments'] ||
+            const totalSegments = parseInt( String(
+                parsedStats.total_segments ||
                 parsedStats.total_segment_count ||
-                parsedStats['total_segment_count'] ||
                 parsedStats.segment_count ||
-                parsedStats['segment_count'] ||
-                '0' 
+                parsedStats['total segments'] ||
+                '0'
+            ) );
+
+            const memorySize = String(
+                parsedStats.memory_size ||
+                parsedStats.memory_usage ||
+                parsedStats['memory size'] ||
+                '0'
             );
 
-            // For memory and disk, try various formats
-            const memorySize = 
-                parsedStats.memory_size || 
-                parsedStats['memory_size'] ||
-                parsedStats.memory_usage ||
-                parsedStats['memory_usage'] ||
-                '0';
-
-            const diskSize = 
-                parsedStats.disk_size || 
-                parsedStats['disk_size'] ||
+            const diskSize = String(
+                parsedStats.disk_size ||
                 parsedStats.disk_usage ||
-                parsedStats['disk_usage'] ||
-                '0';
+                parsedStats['disk size'] ||
+                '0'
+            );
+
+            console.log( `Final parsed statistics: rowCount=${rowCount}, indexedSegments=${indexedSegments}, totalSegments=${totalSegments}, memorySize=${memorySize}, diskSize=${diskSize}` );
 
             return {
                 rowCount,
@@ -806,7 +843,37 @@ cd docker && docker-compose up -d` );
             };
         } catch ( error ) {
             console.error( 'Error getting collection statistics:', error );
-            throw new Error( `Failed to get collection statistics: ${error}` );
+            
+            // Return fallback statistics with at least the row count if possible
+            try {
+                console.log( 'Attempting fallback count query...' );
+                const vectorsResult = await this.listVectors( collection, 0, 1 );
+                return {
+                    rowCount: vectorsResult.total || 0,
+                    indexedSegments: 0,
+                    totalSegments: 0,
+                    memorySize: 'N/A',
+                    diskSize: 'N/A'
+                };
+            } catch ( fallbackError ) {
+                console.error( 'Fallback count also failed:', fallbackError );
+                throw new Error( `Failed to get collection statistics: ${error}` );
+            }
+        }
+    }
+
+    async compactCollection( collection: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            console.log( `Compacting collection "${collection}" to improve statistics accuracy...` );
+            await this.client.compact( { collection_name: collection } );
+            console.log( `Collection "${collection}" compacted successfully` );
+        } catch ( error ) {
+            console.error( 'Error compacting collection:', error );
+            throw new Error( `Failed to compact collection: ${error}` );
         }
     }
 

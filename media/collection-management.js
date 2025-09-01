@@ -85,6 +85,7 @@
                     </div>
                     <div class="action-buttons">
                         <button class="btn" onclick="refreshData()">🔄 Refresh Statistics</button>
+                        <button class="btn btn-secondary" onclick="compactCollection()">🗜️ Compact Collection</button>
                     </div>
                 </div>
             </div>
@@ -249,6 +250,12 @@
 
     function refreshData () {
         vscode.postMessage({ command: 'refresh' });
+    }
+
+    function compactCollection() {
+        if (confirm('Compacting the collection will optimize storage and may improve statistics accuracy. This operation may take some time. Continue?')) {
+            vscode.postMessage({ command: 'compact' });
+        }
     }
 
     function createIndex () {
