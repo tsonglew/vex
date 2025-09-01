@@ -112,6 +112,12 @@
         "category": "Vector Database"
       },
       {
+        "command": "vex.manageCollection",
+        "title": "Manage Collection",
+        "icon": "$(settings-gear)",
+        "category": "Vector Database"
+      },
+      {
         "command": "vex.viewVectorDetails",
         "title": "View Vector Details",
         "icon": "$(eye)",
@@ -243,9 +249,14 @@
           "group": "collection@4"
         },
         {
-          "command": "vex.deleteCollection",
+          "command": "vex.manageCollection",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@5"
+        },
+        {
+          "command": "vex.deleteCollection",
+          "when": "view == vexVectorDBTree && viewItem == collection",
+          "group": "collection@6"
         },
         {
           "command": "vex.viewVectors",
@@ -264,6 +275,12 @@
         {
           "id": "vexVectorDBTree",
           "name": "Vector Databases",
+          "when": "true"
+        },
+        {
+          "id": "vex.collectionManagement",
+          "name": "Collection Management",
+          "type": "webview",
           "when": "true"
         }
       ]

@@ -4,6 +4,7 @@ import { VectorDBTreeProvider, DatabaseConnection } from './vectorDBTreeProvider
 import { DataViewerPanel } from './dataViewerPanel';
 import { ConnectionManager } from './connectionManager';
 import { VectorWebviewProvider } from './webview/VectorWebviewProvider';
+import { CollectionManagementWebviewProvider } from './webview/CollectionManagementWebviewProvider';
 
 // This method is called when your extension is activated
 export function activate( context: vscode.ExtensionContext ) {
@@ -22,6 +23,12 @@ export function activate( context: vscode.ExtensionContext ) {
     const vectorsWebviewProvider = new VectorWebviewProvider( context.extensionUri );
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider( 'vex.vectorsView', vectorsWebviewProvider )
+    );
+
+    // Register the collection management webview provider
+    const collectionManagementWebviewProvider = new CollectionManagementWebviewProvider( context.extensionUri, connectionManager );
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider( 'vex.collectionManagement', collectionManagementWebviewProvider )
     );
 
     // Register commands
@@ -480,6 +487,32 @@ export function activate( context: vscode.ExtensionContext ) {
         }
     } );
 
+    // Command to manage collection (Milvus only)
+    const manageCollectionCommand = vscode.commands.registerCommand( 'vex.manageCollection', async ( item?: any ) => {
+        if ( item?.collection && item?.connection ) {
+            try {
+                // Check if this is a Milvus connection
+                const connection = await connectionManager.getConnectionInfo( item.connection.id );
+                if ( !connection || connection.type !== 'milvus' ) {
+                    vscode.window.showWarningMessage( 'Collection management is only available for Milvus databases.' );
+                    return;
+                }
+
+                // Set the collection in the webview
+                collectionManagementWebviewProvider.setCollection(
+                    item.collection.name,
+                    item.connection.id,
+                    item.database?.name || 'default'
+                );
+
+                // Focus the collection management webview
+                await vscode.commands.executeCommand( 'vex.collectionManagement.focus' );
+            } catch ( error ) {
+                vscode.window.showErrorMessage( `Failed to open collection management: ${error}` );
+            }
+        }
+    } );
+
     // Command to clear all connections (for debugging/reset)
     const clearAllConnectionsCommand = vscode.commands.registerCommand( 'vex.clearAllConnections', async () => {
         const confirmed = await vscode.window.showWarningMessage(
@@ -514,6 +547,7 @@ export function activate( context: vscode.ExtensionContext ) {
         refreshConnectionStatusCommand,
         refreshDatabasesCommand,
         deleteServerCommand,
+        manageCollectionCommand,
         clearAllConnectionsCommand
     );
 }
@@ -577,8 +611,8 @@ function generateId(): string {
     return Math.random().toString( 36 ).substring( 2, 9 );
 }
 
-function getDefaultPort(type: string): string {
-    switch (type) {
+function getDefaultPort( type: string ): string {
+    switch ( type ) {
         case 'milvus': return '19530';
         case 'chroma': return '8000';
         case 'pinecone': return '443';
@@ -612,13 +646,13 @@ async function showAddConnectionDialog(): Promise<any> {
         { label: 'Redis 🚧 Under development', value: 'redis' },
         { label: 'PostgreSQL (pgvector) 🚧 Under development', value: 'pgvector' }
     ];
-    
-    const typeSelection = await vscode.window.showQuickPick(typeOptions, {
+
+    const typeSelection = await vscode.window.showQuickPick( typeOptions, {
         title: 'Select Vector Database Type',
         placeHolder: 'Choose a vector database to connect to'
-    });
-    
-    if (!typeSelection) { return null; }
+    } );
+
+    if ( !typeSelection ) { return null; }
     const type = typeSelection.value;
     if ( !type ) { return null; }
 
@@ -631,8 +665,8 @@ async function showAddConnectionDialog(): Promise<any> {
 
     const port = await vscode.window.showInputBox( {
         prompt: 'Enter port',
-        placeHolder: getDefaultPort(type),
-        value: getDefaultPort(type)
+        placeHolder: getDefaultPort( type ),
+        value: getDefaultPort( type )
     } );
     if ( !port ) { return null; }
 

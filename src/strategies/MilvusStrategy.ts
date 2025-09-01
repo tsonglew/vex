@@ -708,4 +708,193 @@ cd docker && docker-compose up -d` );
             throw new Error( `Failed to delete vectors with args ${JSON.stringify( args )}: ${error}` );
         }
     }
+
+    // Collection management methods
+    async getCollectionInfo( collection: string ): Promise<any> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            const description = await this.client.describeCollection({ collection_name: collection });
+            const loadState = await this.client.getLoadState({ collection_name: collection });
+            
+            return {
+                name: collection,
+                description: description.schema?.description || '',
+                fields: description.schema?.fields || [],
+                consistencyLevel: description.consistency_level || 'Session',
+                loadState: loadState.state || 'Unknown',
+                createdTime: description.created_utc_timestamp || null,
+                autoId: description.schema?.fields?.some((field: any) => field.auto_id) || false
+            };
+        } catch ( error ) {
+            console.error( 'Error getting collection info:', error );
+            throw new Error( `Failed to get collection info: ${error}` );
+        }
+    }
+
+    async getCollectionStatistics( collection: string ): Promise<any> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            const stats = await this.client.getCollectionStatistics({ collection_name: collection });
+            const parsedStats: any = {};
+            
+            if (stats.stats) {
+                stats.stats.forEach((stat: any) => {
+                    parsedStats[stat.key] = stat.value;
+                });
+            }
+            
+            return {
+                rowCount: parseInt(parsedStats.row_count || '0'),
+                indexedSegments: parseInt(parsedStats.indexed_segments || '0'),
+                totalSegments: parseInt(parsedStats.total_segments || '0'),
+                memorySize: parsedStats.memory_size || '0',
+                diskSize: parsedStats.disk_size || '0'
+            };
+        } catch ( error ) {
+            console.error( 'Error getting collection statistics:', error );
+            throw new Error( `Failed to get collection statistics: ${error}` );
+        }
+    }
+
+    async getIndexes( collection: string ): Promise<any[]> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            const indexes = await this.client.describeIndex({ collection_name: collection });
+            return Array.isArray(indexes) ? indexes : [indexes];
+        } catch ( error ) {
+            console.error( 'Error getting indexes:', error );
+            return [];
+        }
+    }
+
+    async getPartitions( collection: string ): Promise<any[]> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            const partitions = await this.client.showPartitions({ collection_name: collection });
+            return partitions.partition_names?.map((name: string, index: number) => ({
+                name: name,
+                id: partitions.partitionIDs?.[index] || index,
+                createdTime: partitions.created_utc_timestamps?.[index] || null
+            })) || [];
+        } catch ( error ) {
+            console.error( 'Error getting partitions:', error );
+            return [];
+        }
+    }
+
+    async createIndex( collection: string, fieldName: string, indexType: string, params: any ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            await this.client.createIndex({
+                collection_name: collection,
+                field_name: fieldName,
+                index_type: indexType as any,
+                params: params || {}
+            });
+            console.log( `Index created on field "${fieldName}" with type "${indexType}"` );
+        } catch ( error ) {
+            console.error( 'Error creating index:', error );
+            throw new Error( `Failed to create index: ${error}` );
+        }
+    }
+
+    async dropIndex( collection: string, indexName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            await this.client.dropIndex({
+                collection_name: collection,
+                index_name: indexName
+            });
+            console.log( `Index "${indexName}" dropped successfully` );
+        } catch ( error ) {
+            console.error( 'Error dropping index:', error );
+            throw new Error( `Failed to drop index: ${error}` );
+        }
+    }
+
+    async createPartition( collection: string, partitionName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            await this.client.createPartition({
+                collection_name: collection,
+                partition_name: partitionName
+            });
+            console.log( `Partition "${partitionName}" created successfully` );
+        } catch ( error ) {
+            console.error( 'Error creating partition:', error );
+            throw new Error( `Failed to create partition: ${error}` );
+        }
+    }
+
+    async dropPartition( collection: string, partitionName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            await this.client.dropPartition({
+                collection_name: collection,
+                partition_name: partitionName
+            });
+            console.log( `Partition "${partitionName}" dropped successfully` );
+        } catch ( error ) {
+            console.error( 'Error dropping partition:', error );
+            throw new Error( `Failed to drop partition: ${error}` );
+        }
+    }
+
+    async loadPartition( collection: string, partitionName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            await this.client.loadPartitions({
+                collection_name: collection,
+                partition_names: [partitionName]
+            });
+            console.log( `Partition "${partitionName}" loaded successfully` );
+        } catch ( error ) {
+            console.error( 'Error loading partition:', error );
+            throw new Error( `Failed to load partition: ${error}` );
+        }
+    }
+
+    async releasePartition( collection: string, partitionName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            await this.client.releasePartitions({
+                collection_name: collection,
+                partition_names: [partitionName]
+            });
+            console.log( `Partition "${partitionName}" released successfully` );
+        } catch ( error ) {
+            console.error( 'Error releasing partition:', error );
+            throw new Error( `Failed to release partition: ${error}` );
+        }
+    }
 }

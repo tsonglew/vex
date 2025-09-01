@@ -263,4 +263,13 @@ export class ConnectionManager {
         }
         this.activeConnections.clear();
     }
+
+    async getConnectionInfo( connectionId: string ): Promise<any> {
+        // Get connection info from active connections
+        const strategy = this.activeConnections.get( connectionId );
+        if ( strategy ) {
+            return { id: connectionId, type: strategy.type, isConnected: true };
+        }
+        return null;
+    }
 }
