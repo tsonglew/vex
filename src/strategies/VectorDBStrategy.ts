@@ -19,6 +19,6 @@ export interface VectorDBStrategy {
     // Vector operations  
     insertVectors( collection: string, vectors: number[][], ids?: string[], metadata?: any[] ): Promise<number>;
     searchVectors( collection: string, vector: number[], topK: number ): Promise<Array<{ id: string; distance: number; vector?: number[] }>>;
-    listVectors( collection: string ): Promise<Array<{ id: string; vector: number[]; metadata: any }>>;
+    listVectors( collection: string, offset?: number, limit?: number ): Promise<{ vectors: Array<{ id: string; vector: number[]; metadata: any }>; total: number; offset: number; limit: number }>;
     deleteVectors( collection: string, ids: string[] ): Promise<number>;
 }

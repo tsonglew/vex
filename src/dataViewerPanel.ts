@@ -1,20 +1,24 @@
 import * as vscode from 'vscode';
+import { ConnectionManager } from './connectionManager.js';
 
 export class DataViewerPanel {
     private static currentPanels = new Map<string, DataViewerPanel>();
     private _panel: vscode.WebviewPanel | undefined;
     private _context: vscode.ExtensionContext;
+    private _connectionManager: ConnectionManager;
     private _data: any;
     private _title: string;
     private _viewType: 'vectors' | 'search_results' | 'collections';
 
     constructor(
         context: vscode.ExtensionContext,
+        connectionManager: ConnectionManager,
         title: string,
         viewType: 'vectors' | 'search_results' | 'collections',
         data: any
     ) {
         this._context = context;
+        this._connectionManager = connectionManager;
         this._title = title;
         this._viewType = viewType;
         this._data = data;
@@ -22,6 +26,7 @@ export class DataViewerPanel {
 
     public static show(
         context: vscode.ExtensionContext,
+        connectionManager: ConnectionManager,
         title: string,
         viewType: 'vectors' | 'search_results' | 'collections',
         data: any
@@ -37,7 +42,7 @@ export class DataViewerPanel {
         }
 
         // Create new panel
-        const panel = new DataViewerPanel( context, title, viewType, data );
+        const panel = new DataViewerPanel( context, connectionManager, title, viewType, data );
         panel.createPanel();
         DataViewerPanel.currentPanels.set( panelKey, panel );
         return panel;
@@ -77,6 +82,18 @@ export class DataViewerPanel {
                     case 'export':
                         this.exportData();
                         break;
+                    case 'nextPage':
+                        this.loadPage( message.page );
+                        break;
+                    case 'prevPage':
+                        this.loadPage( message.page );
+                        break;
+                    case 'goToPage':
+                        this.loadPage( message.page );
+                        break;
+                    case 'changePageSize':
+                        this.changePageSize( message.page, message.limit );
+                        break;
                 }
             },
             undefined,
@@ -101,6 +118,75 @@ export class DataViewerPanel {
         const dataStr = JSON.stringify( this._data, null, 2 );
         vscode.env.clipboard.writeText( dataStr );
         vscode.window.showInformationMessage( 'Data copied to clipboard!' );
+    }
+
+    private async loadPage( page: number ): Promise<void> {
+        if ( this._viewType !== 'vectors' || !this._data.connection ) {
+            return;
+        }
+
+        const limit = this._data.limit || 100;
+        const offset = page * limit;
+
+        try {
+            // Get new page of vectors using the existing connection manager
+            const vectorsResult = await this._connectionManager.listVectors(
+                this._data.connection.id,
+                this._data.collection.name,
+                offset,
+                limit
+            );
+
+            // Update data with new page
+            this._data = {
+                ...this._data,
+                vectors: vectorsResult.vectors,
+                total: vectorsResult.total,
+                offset: vectorsResult.offset,
+                limit: vectorsResult.limit
+            };
+
+            // Update webview content
+            if ( this._panel ) {
+                this._panel.webview.html = this.getWebviewContent();
+            }
+        } catch ( error ) {
+            vscode.window.showErrorMessage( `Failed to load page ${page + 1}: ${error}` );
+        }
+    }
+
+    private async changePageSize( page: number, newLimit: number ): Promise<void> {
+        if ( this._viewType !== 'vectors' || !this._data.connection ) {
+            return;
+        }
+
+        const offset = page * newLimit;
+
+        try {
+            // Get vectors with new page size using the existing connection manager
+            const vectorsResult = await this._connectionManager.listVectors(
+                this._data.connection.id,
+                this._data.collection.name,
+                offset,
+                newLimit
+            );
+
+            // Update data with new page size
+            this._data = {
+                ...this._data,
+                vectors: vectorsResult.vectors,
+                total: vectorsResult.total,
+                offset: vectorsResult.offset,
+                limit: vectorsResult.limit
+            };
+
+            // Update webview content
+            if ( this._panel ) {
+                this._panel.webview.html = this.getWebviewContent();
+            }
+        } catch ( error ) {
+            vscode.window.showErrorMessage( `Failed to change page size: ${error}` );
+        }
     }
 
     private getWebviewContent(): string {
@@ -528,9 +614,11 @@ export class DataViewerPanel {
 
         const vectors = data.vectors;
         const collection = data.collection || {};
+        const total = data.total || vectors.length;
+        const offset = data.offset || 0;
+        const limit = data.limit || 100;
 
         // Calculate stats
-        const totalVectors = vectors.length;
         const avgDimension = vectors.length > 0 ?
             vectors.reduce( ( sum: number, v: any ) => sum + ( v.vector?.length || 0 ), 0 ) / vectors.length : 0;
         const hasMetadata = vectors.some( ( v: any ) => v.metadata && Object.keys( v.metadata ).length > 0 );
@@ -539,7 +627,7 @@ export class DataViewerPanel {
             <div class="stats-container">
                 <div class="stat-card">
                     <div class="stat-label">Total Vectors</div>
-                    <div class="stat-value">${totalVectors.toLocaleString()}</div>
+                    <div class="stat-value">${total.toLocaleString()}</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Collection</div>
@@ -588,10 +676,64 @@ export class DataViewerPanel {
                 </table>
                 <div class="pagination">
                     <div class="pagination-info">
-                        Showing ${Math.min( totalVectors, 100 )} of ${totalVectors} vectors
-                        ${totalVectors > 100 ? '(limited to first 100 for performance)' : ''}
+                        Showing ${offset + 1} - ${Math.min( offset + limit, total )} of ${total.toLocaleString()} vectors
+                    </div>
+                    <div class="pagination-controls">
+                        <button id="first-page-btn" class="pagination-btn" ${offset === 0 ? 'disabled' : ''} onclick="goToFirstPage()">
+                            ⏮ First
+                        </button>
+                        <button id="prev-page-btn" class="pagination-btn" ${offset === 0 ? 'disabled' : ''} onclick="goToPrevPage()">
+                            ← Prev
+                        </button>
+                        <span class="page-info">
+                            Page ${Math.floor( offset / limit ) + 1} of ${Math.ceil( total / limit )}
+                        </span>
+                        <button id="next-page-btn" class="pagination-btn" ${offset + limit >= total ? 'disabled' : ''} onclick="goToNextPage()">
+                            Next →
+                        </button>
+                        <button id="last-page-btn" class="pagination-btn" ${offset + limit >= total ? 'disabled' : ''} onclick="goToLastPage()">
+                            Last ⏭
+                        </button>
+                    </div>
+                    <div class="pagination-size">
+                        <label>Vectors per page:</label>
+                        <select id="page-size-select" onchange="changePageSize(this.value)">
+                            <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+                            <option value="100" ${limit === 100 ? 'selected' : ''}>100</option>
+                            <option value="200" ${limit === 200 ? 'selected' : ''}>200</option>
+                            <option value="500" ${limit === 500 ? 'selected' : ''}>500</option>
+                        </select>
                     </div>
                 </div>
+                <script>
+                    const vscode = acquireVsCodeApi();
+                    
+                    function goToFirstPage() {
+                        vscode.postMessage({ command: 'goToPage', page: 0 });
+                    }
+                    
+                    function goToPrevPage() {
+                        const currentPage = Math.floor(${offset} / ${limit});
+                        vscode.postMessage({ command: 'prevPage', page: currentPage - 1 });
+                    }
+                    
+                    function goToNextPage() {
+                        const currentPage = Math.floor(${offset} / ${limit});
+                        vscode.postMessage({ command: 'nextPage', page: currentPage + 1 });
+                    }
+                    
+                    function goToLastPage() {
+                        const lastPage = Math.ceil(${total} / ${limit}) - 1;
+                        vscode.postMessage({ command: 'goToPage', page: lastPage });
+                    }
+                    
+                    function changePageSize(newLimit) {
+                        // Recalculate current page with new limit
+                        const currentItem = ${offset} + 1;
+                        const newPage = Math.floor((currentItem - 1) / parseInt(newLimit));
+                        vscode.postMessage({ command: 'changePageSize', page: newPage, limit: parseInt(newLimit) });
+                    }
+                </script>
             </div>
         `;
     }

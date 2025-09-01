@@ -196,14 +196,14 @@ export class ConnectionManager {
         }
     }
 
-    async listVectors( connectionId: string, collection: string ): Promise<any[]> {
+    async listVectors( connectionId: string, collection: string, offset?: number, limit?: number ): Promise<{ vectors: Array<{ id: string; vector: number[]; metadata: any }>; total: number; offset: number; limit: number }> {
         const strategy = this.activeConnections.get( connectionId );
         if ( !strategy ) {
             throw new Error( 'Database not connected' );
         }
 
         try {
-            return await strategy.listVectors( collection );
+            return await strategy.listVectors( collection, offset, limit );
         } catch ( error ) {
             console.error( 'Error listing vectors:', error );
             throw new Error( `Failed to list vectors: ${error}` );

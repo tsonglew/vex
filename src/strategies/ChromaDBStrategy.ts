@@ -231,14 +231,25 @@ export class ChromaDBStrategy implements VectorDBStrategy {
         }
     }
 
-    async listVectors( collection: string ): Promise<Array<{ id: string; vector: number[]; metadata: any }>> {
+    async listVectors( collection: string, offset: number = 0, limit: number = 100 ): Promise<{ vectors: Array<{ id: string; vector: number[]; metadata: any }>; total: number; offset: number; limit: number }> {
         if ( !this.httpClient ) {
             throw new Error( 'ChromaDB client not connected' );
         }
 
         try {
+            // First get the total count
+            let total = 0;
+            try {
+                const countResponse = await this.httpClient.post( `/api/v1/collections/${collection}/count`, {} );
+                total = countResponse.data || 0;
+            } catch ( countError ) {
+                console.warn( 'Failed to get collection count, will estimate from results:', countError );
+            }
+
+            // Get vectors with pagination
             const response = await this.httpClient.post( `/api/v1/collections/${collection}/get`, {
-                limit: 100,
+                limit: limit,
+                offset: offset,
                 include: ['embeddings', 'metadatas']
             } );
 
@@ -246,13 +257,37 @@ export class ChromaDBStrategy implements VectorDBStrategy {
             const embeddings = response.data?.embeddings || [];
             const metadatas = response.data?.metadatas || [];
 
-            return ids.map( ( id: string, index: number ) => ( {
+            const vectors = ids.map( ( id: string, index: number ) => ( {
                 id: id,
                 vector: embeddings[index],
                 metadata: metadatas[index] || {}
             } ) );
+
+            // If we couldn't get total earlier, estimate it
+            if ( total === 0 && vectors.length > 0 ) {
+                if ( vectors.length < limit ) {
+                    // We got fewer results than requested, so total is offset + actual results
+                    total = offset + vectors.length;
+                } else {
+                    // We got full page, so there might be more. Try to get a better estimate
+                    total = Math.max( offset + vectors.length, offset + limit + 1 );
+                }
+            }
+
+            return {
+                vectors: vectors,
+                total: total,
+                offset: offset,
+                limit: limit
+            };
         } catch ( error ) {
-            return [];
+            console.warn( 'Error listing vectors, returning empty result:', error );
+            return {
+                vectors: [],
+                total: 0,
+                offset: offset,
+                limit: limit
+            };
         }
     }
 

@@ -63,14 +63,11 @@ export class VectorDBTreeProvider implements vscode.TreeDataProvider<TreeItem> {
         }
 
         if ( element instanceof CollectionItem ) {
-            // Show vectors for this collection
-            return this.getVectorsForCollection( element );
-        }
-
-        if ( element instanceof VectorItem ) {
-            // Vectors are leaf nodes
+            // Collections are now leaf nodes - no longer show individual vectors
             return Promise.resolve( [] );
         }
+
+        // VectorItem class removed - no longer showing individual vectors
 
         return Promise.resolve( [] );
     }
@@ -123,35 +120,34 @@ export class VectorDBTreeProvider implements vscode.TreeDataProvider<TreeItem> {
                 return [new PlaceholderItem( 'No collections', 'Create a collection to get started' )];
             }
 
-            return collections.map( collection => new CollectionItem( collection, dbItem.connection, dbItem.database ) );
+            // Enhance collections with vector counts
+            const enhancedCollections = await Promise.all(
+                collections.map( async ( collection ) => {
+                    try {
+                        // Get vector count for this collection (just get count, no actual vectors)
+                        const vectorsResult = await this.connectionManager.listVectors( dbItem.connection.id, collection.name, 0, 1 );
+                        return {
+                            ...collection,
+                            vectorCount: vectorsResult.total
+                        };
+                    } catch ( error ) {
+                        console.warn( `Failed to get vector count for collection ${collection.name}:`, error );
+                        return {
+                            ...collection,
+                            vectorCount: 0
+                        };
+                    }
+                } )
+            );
+
+            return enhancedCollections.map( collection => new CollectionItem( collection, dbItem.connection, dbItem.database ) );
         } catch ( error ) {
             console.error( 'Error getting collections:', error );
             return [new PlaceholderItem( 'Error loading collections', error?.toString() || 'Unknown error' )];
         }
     }
 
-    private async getVectorsForCollection( collectionItem: CollectionItem ): Promise<TreeItem[]> {
-        try {
-            if ( !collectionItem.connection.isConnected ) {
-                return [new PlaceholderItem( 'Not connected', 'Connect to view vectors' )];
-            }
-
-            // Get vectors from the collection
-            const vectors = await this.connectionManager.listVectors( collectionItem.connection.id, collectionItem.collection.name );
-
-            if ( vectors.length === 0 ) {
-                return [new PlaceholderItem( 'No vectors', 'Insert vectors to get started' )];
-            }
-
-            // Limit to first 100 vectors for performance
-            const limitedVectors = vectors.slice( 0, 100 );
-
-            return limitedVectors.map( vector => new VectorItem( vector, collectionItem.collection.name ) );
-        } catch ( error ) {
-            console.error( 'Error getting vectors:', error );
-            return [new PlaceholderItem( 'Error loading vectors', error?.toString() || 'Unknown error' )];
-        }
-    }
+    // Method removed - collections are now leaf nodes that show vector count in their description
 
     // Public methods for external management
     async addConnection( connection: DatabaseConnection ): Promise<void> {
@@ -287,7 +283,7 @@ export class CollectionItem extends TreeItem {
         public readonly connection: DatabaseConnection,
         public readonly database: any
     ) {
-        super( collection.name, vscode.TreeItemCollapsibleState.Collapsed );
+        super( collection.name, vscode.TreeItemCollapsibleState.None );
 
         this.tooltip = this.getTooltip();
         this.description = this.getDescription();
@@ -317,31 +313,7 @@ export class CollectionItem extends TreeItem {
     }
 }
 
-// Vector item (within a collection)
-export class VectorItem extends TreeItem {
-    private readonly vectorLabel: string;
-    private readonly tooltipText: string;
-    private readonly descriptionText: string;
-
-    constructor(
-        public readonly vector: any,
-        public readonly collectionName: string
-    ) {
-        const id = vector.id || vector._id || 'Unknown';
-        const dimension = vector.vector?.length || vector.embedding?.length;
-
-        super( `Vector ${id}`, vscode.TreeItemCollapsibleState.None );
-
-        this.vectorLabel = `Vector ${id}`;
-        this.tooltipText = `Vector ID: ${id}\nDimension: ${dimension || 'Unknown'}\nCollection: ${collectionName}`;
-        this.descriptionText = dimension ? `${dimension}D` : '';
-
-        this.tooltip = this.tooltipText;
-        this.description = this.descriptionText;
-        this.iconPath = new vscode.ThemeIcon( 'symbol-number', new vscode.ThemeColor( 'charts.green' ) );
-        this.contextValue = 'vector';
-    }
-}
+// VectorItem class removed - collections now show vector count instead of individual vectors
 
 // Placeholder item for empty states
 export class PlaceholderItem extends TreeItem {

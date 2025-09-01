@@ -140,7 +140,7 @@ cd docker && docker-compose up -d` );
                             const showResponse = collections as ShowCollectionsResponse;
                             hasCollections = Array.isArray( showResponse.data ) && showResponse.data.length > 0;
                         } else if ( Array.isArray( collections ) ) {
-                            hasCollections = collections.length > 0;
+                            hasCollections = ( collections as any[] ).length > 0;
                         }
                     }
 
@@ -378,39 +378,39 @@ cd docker && docker-compose up -d` );
         try {
             // First try to get the load state of the collection using getLoadState
             try {
-                const loadStateResponse = await this.client.getLoadState({ collection_name: collection });
-                console.log(`Load state for collection "${collection}":`, loadStateResponse);
-                
+                const loadStateResponse = await this.client.getLoadState( { collection_name: collection } );
+                console.log( `Load state for collection "${collection}":`, loadStateResponse );
+
                 // Check if the collection is loaded based on the response state
-                if (loadStateResponse && loadStateResponse.state) {
+                if ( loadStateResponse && loadStateResponse.state ) {
                     const state = loadStateResponse.state.toLowerCase();
-                    if (state === 'loadstateloaded' || state === 'loaded') {
-                        console.log(`Collection "${collection}" is already loaded`);
+                    if ( state === 'loadstateloaded' || state === 'loaded' ) {
+                        console.log( `Collection "${collection}" is already loaded` );
                         return true;
-                    } else if (state === 'loadstateloading' || state === 'loading') {
-                        console.log(`Collection "${collection}" is currently loading...`);
+                    } else if ( state === 'loadstateloading' || state === 'loading' ) {
+                        console.log( `Collection "${collection}" is currently loading...` );
                         // Wait a bit and check again, or proceed as it will likely complete
                         return true;
-                    } else if (state === 'loadstatenotload' || state === 'not_load' || state === 'notloaded') {
-                        console.log(`Collection "${collection}" is not loaded, will attempt to load it`);
+                    } else if ( state === 'loadstatenotload' || state === 'not_load' || state === 'notloaded' ) {
+                        console.log( `Collection "${collection}" is not loaded, will attempt to load it` );
                         // Continue to loading logic below
                     }
                 }
-            } catch (loadStateError) {
+            } catch ( loadStateError ) {
                 // getLoadState might not be available in all Milvus versions or might fail
-                console.log('getLoadState not available or failed, trying alternative approach:', loadStateError);
+                console.log( 'getLoadState not available or failed, trying alternative approach:', loadStateError );
             }
 
             // Try to check collection existence first
             try {
-                await this.client.describeCollection({ collection_name: collection });
-                console.log(`Collection "${collection}" exists`);
-            } catch (describeError) {
-                const describeErrorMsg = describeError instanceof Error ? describeError.message : String(describeError);
-                if (describeErrorMsg.toLowerCase().includes('not found') ||
-                    describeErrorMsg.toLowerCase().includes('does not exist') ||
-                    describeErrorMsg.toLowerCase().includes('not exist')) {
-                    throw new Error(`Collection "${collection}" does not exist`);
+                await this.client.describeCollection( { collection_name: collection } );
+                console.log( `Collection "${collection}" exists` );
+            } catch ( describeError ) {
+                const describeErrorMsg = describeError instanceof Error ? describeError.message : String( describeError );
+                if ( describeErrorMsg.toLowerCase().includes( 'not found' ) ||
+                    describeErrorMsg.toLowerCase().includes( 'does not exist' ) ||
+                    describeErrorMsg.toLowerCase().includes( 'not exist' ) ) {
+                    throw new Error( `Collection "${collection}" does not exist` );
                 }
                 throw describeError;
             }
@@ -420,58 +420,58 @@ cd docker && docker-compose up -d` );
 
             // Collection exists but might not be loaded - try to load it
             try {
-                console.log(`Loading collection "${collection}"...`);
-                await this.client.loadCollection({ collection_name: collection });
-                console.log(`Collection "${collection}" loaded successfully`);
+                console.log( `Loading collection "${collection}"...` );
+                await this.client.loadCollection( { collection_name: collection } );
+                console.log( `Collection "${collection}" loaded successfully` );
                 return true;
-            } catch (loadError) {
-                const loadErrorMessage = loadError instanceof Error ? loadError.message : String(loadError);
-                
+            } catch ( loadError ) {
+                const loadErrorMessage = loadError instanceof Error ? loadError.message : String( loadError );
+
                 // Check if collection is already loaded
-                if (loadErrorMessage.toLowerCase().includes('already loaded') ||
-                    loadErrorMessage.toLowerCase().includes('already exists')) {
-                    console.log(`Collection "${collection}" is already loaded`);
+                if ( loadErrorMessage.toLowerCase().includes( 'already loaded' ) ||
+                    loadErrorMessage.toLowerCase().includes( 'already exists' ) ) {
+                    console.log( `Collection "${collection}" is already loaded` );
                     return true;
                 }
-                
-                console.error(`Failed to load collection "${collection}":`, loadErrorMessage);
-                
+
+                console.error( `Failed to load collection "${collection}":`, loadErrorMessage );
+
                 // Prompt user after load failure
                 const reloadChoice = await vscode.window.showInformationMessage(
                     `Failed to load collection "${collection}": ${loadErrorMessage}. Try again?`,
                     'Retry',
                     'Cancel'
                 );
-                
-                if (reloadChoice === 'Retry') {
+
+                if ( reloadChoice === 'Retry' ) {
                     // Add small delay and retry
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    await this.client.loadCollection({ collection_name: collection });
-                    console.log(`Collection "${collection}" loaded successfully on retry`);
+                    await new Promise( resolve => setTimeout( resolve, 1000 ) );
+                    await this.client.loadCollection( { collection_name: collection } );
+                    console.log( `Collection "${collection}" loaded successfully on retry` );
                     return true;
                 } else {
-                    throw new Error(`Failed to load collection "${collection}": ${loadErrorMessage}`);
+                    throw new Error( `Failed to load collection "${collection}": ${loadErrorMessage}` );
                 }
             }
 
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            
+        } catch ( error ) {
+            const errorMessage = error instanceof Error ? error.message : String( error );
+
             // Check for specific error patterns
-            if (errorMessage.toLowerCase().includes('not found') ||
-                errorMessage.toLowerCase().includes('does not exist') ||
-                errorMessage.toLowerCase().includes('not exist')) {
-                throw new Error(`Collection "${collection}" does not exist`);
+            if ( errorMessage.toLowerCase().includes( 'not found' ) ||
+                errorMessage.toLowerCase().includes( 'does not exist' ) ||
+                errorMessage.toLowerCase().includes( 'not exist' ) ) {
+                throw new Error( `Collection "${collection}" does not exist` );
             }
-            
+
             // Re-throw the error if it's already our custom error
-            if (errorMessage.includes('Operation cancelled') || errorMessage.includes('Failed to load collection')) {
+            if ( errorMessage.includes( 'Operation cancelled' ) || errorMessage.includes( 'Failed to load collection' ) ) {
                 throw error;
             }
 
             // For other errors, provide more context
-            console.error('Unexpected error in ensureCollectionLoaded:', error);
-            throw new Error(`Failed to check collection loading status for "${collection}": ${errorMessage}`);
+            console.error( 'Unexpected error in ensureCollectionLoaded:', error );
+            throw new Error( `Failed to check collection loading status for "${collection}": ${errorMessage}` );
         }
     }
 
@@ -557,40 +557,123 @@ cd docker && docker-compose up -d` );
         }
     }
 
-    async listVectors( collection: string ): Promise<any[]> {
+    async listVectors( collection: string, offset: number = 0, limit: number = 100 ): Promise<{ vectors: Array<{ id: string; vector: number[]; metadata: any }>; total: number; offset: number; limit: number }> {
         if ( !this.client ) {
             throw new Error( 'Milvus client not connected' );
         }
 
-        const args = { collection, limit: 100 };
+        const args = { collection, offset, limit };
         console.log( 'Listing vectors with args:', args );
 
         try {
             // Ensure collection is loaded before proceeding
             await this.ensureCollectionLoaded( collection );
 
+            // Get total count first
+            let total = 0;
+            try {
+                // Try to get collection statistics first (more efficient)
+                try {
+                    const statsResponse = await this.client.getCollectionStatistics( { collection_name: collection } );
+                    if ( statsResponse && statsResponse.stats ) {
+                        // Look for row count in stats
+                        const rowCountStat = statsResponse.stats.find( ( stat: any ) => stat.key === 'row_count' );
+                        if ( rowCountStat ) {
+                            total = parseInt( String( rowCountStat.value ) ) || 0;
+                        }
+                    }
+                } catch ( statsError ) {
+                    console.warn( 'Collection statistics not available, trying count query:', statsError );
+                }
+
+                // If we couldn't get stats, try count query without pagination parameters
+                if ( total === 0 ) {
+                    try {
+                        const countResponse = await this.client.query( {
+                            collection_name: collection,
+                            filter: '',
+                            output_fields: ['count(*)']
+                            // No limit parameter to avoid pagination error
+                        } );
+                        // Try to extract count from response
+                        if ( countResponse.data && countResponse.data.length > 0 ) {
+                            total = countResponse.data[0]['count(*)'] || 0;
+                        }
+                    } catch ( countQueryError ) {
+                        console.warn( 'Count query failed, trying alternative approach:', countQueryError );
+
+                        // Final fallback: estimate by querying with max limit
+                        try {
+                            const allResponse = await this.client.query( {
+                                collection_name: collection,
+                                output_fields: ['id'],
+                                limit: 16384 // Milvus max limit
+                            } );
+                            total = ( allResponse.data || [] ).length;
+                        } catch ( fallbackError ) {
+                            console.warn( 'All count methods failed, will estimate from results:', fallbackError );
+                        }
+                    }
+                }
+            } catch ( countError ) {
+                console.warn( 'Failed to get exact count, will estimate from query results:', countError );
+                // We'll set total based on the actual query results
+            }
+
             // For Milvus, we need to query the collection to get vectors
             try {
                 const response = await this.client.query( {
                     collection_name: collection,
-                    limit: 100,
+                    limit: limit,
+                    offset: offset,
                     output_fields: ['*']
                 } );
 
                 const vectors = response.data || [];
-                console.log( `Successfully listed ${vectors.length} vectors` );
-                return vectors;
-            } catch (queryError) {
-                const queryErrorMsg = queryError instanceof Error ? queryError.message : String(queryError);
-                console.log('Query failed, trying alternative approach:', queryErrorMsg);
-                
-                // Fallback: try to get collection info and return basic structure
+
+                // If we couldn't get total earlier, estimate it
+                if ( total === 0 && vectors.length > 0 ) {
+                    if ( vectors.length < limit ) {
+                        // We got fewer results than requested, so total is offset + actual results
+                        total = offset + vectors.length;
+                    } else {
+                        // We got full page, so there might be more. Try to get a better estimate
+                        total = Math.max( offset + vectors.length, offset + limit + 1 );
+                    }
+                }
+
+                // Normalize vector format to match interface
+                const normalizedVectors = vectors.map( ( vector: any ) => ( {
+                    id: vector.id || vector._id || 'unknown',
+                    vector: vector.vector || [],
+                    metadata: { ...vector }
+                } ) );
+
+                console.log( `Successfully listed ${normalizedVectors.length} vectors (offset: ${offset}, limit: ${limit}, total: ${total})` );
+
+                return {
+                    vectors: normalizedVectors,
+                    total: total,
+                    offset: offset,
+                    limit: limit
+                };
+            } catch ( queryError ) {
+                const queryErrorMsg = queryError instanceof Error ? queryError.message : String( queryError );
+                console.log( 'Query failed, trying alternative approach:', queryErrorMsg );
+
+                // Fallback: try to get collection info and return empty result with structure
                 try {
-                    const collectionInfo = await this.client.describeCollection({ collection_name: collection });
-                    console.log('Collection info retrieved:', collectionInfo.schema?.fields?.length || 0, 'fields');
-                    return [];
-                } catch (describeError) {
-                    console.error('Failed to describe collection:', describeError);
+                    const collectionInfo = await this.client.describeCollection( { collection_name: collection } );
+                    console.log( 'Collection info retrieved:', collectionInfo.schema?.fields?.length || 0, 'fields' );
+
+                    return {
+                        vectors: [],
+                        total: 0,
+                        offset: offset,
+                        limit: limit
+                    };
+                } catch ( describeError ) {
+                    console.error( 'Failed to describe collection:', describeError );
                     throw queryError; // Re-throw original query error
                 }
             }

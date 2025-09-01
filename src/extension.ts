@@ -19,9 +19,9 @@ export function activate( context: vscode.ExtensionContext ) {
     vscode.window.registerTreeDataProvider( 'vexVectorDBTree', treeProvider );
 
     // Register the vectors webview provider
-    const vectorsWebviewProvider = new VectorWebviewProvider(context.extensionUri);
+    const vectorsWebviewProvider = new VectorWebviewProvider( context.extensionUri );
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('vex.vectorsView', vectorsWebviewProvider)
+        vscode.window.registerWebviewViewProvider( 'vex.vectorsView', vectorsWebviewProvider )
     );
 
     // Register commands
@@ -154,18 +154,22 @@ export function activate( context: vscode.ExtensionContext ) {
                     title: `Loading vectors from "${item.collection.name}"...`,
                     cancellable: false
                 }, async ( progress ) => {
-                    // Get real vectors from the database
-                    const vectors = await connectionManager.listVectors( item.connection.id, item.collection.name );
+                    // Get real vectors from the database with pagination (start with first page)
+                    const vectorsResult = await connectionManager.listVectors( item.connection.id, item.collection.name, 0, 100 );
 
                     const data = {
                         collection: item.collection,
-                        vectors: vectors,
+                        vectors: vectorsResult.vectors,
+                        total: vectorsResult.total,
+                        offset: vectorsResult.offset,
+                        limit: vectorsResult.limit,
                         connection: item.connection
                     };
 
                     // Open the data viewer panel
                     DataViewerPanel.show(
                         context,
+                        connectionManager,
                         `Vectors - ${item.collection.name}`,
                         'vectors',
                         data
@@ -234,6 +238,7 @@ export function activate( context: vscode.ExtensionContext ) {
                         // Open the data viewer panel
                         DataViewerPanel.show(
                             context,
+                            connectionManager,
                             `Search Results - ${item.collection.name}`,
                             'search_results',
                             data
@@ -284,18 +289,22 @@ export function activate( context: vscode.ExtensionContext ) {
                     title: `Loading vectors from "${item.collectionName}"...`,
                     cancellable: false
                 }, async ( progress ) => {
-                    // Get real vectors from the database
-                    const vectors = await connectionManager.listVectors( connection.id, item.collectionName );
+                    // Get real vectors from the database with pagination (start with first page)
+                    const vectorsResult = await connectionManager.listVectors( connection.id, item.collectionName, 0, 100 );
 
                     const data = {
                         collection: { name: item.collectionName },
-                        vectors: vectors,
+                        vectors: vectorsResult.vectors,
+                        total: vectorsResult.total,
+                        offset: vectorsResult.offset,
+                        limit: vectorsResult.limit,
                         connection: connection
                     };
 
                     // Open the data viewer panel
                     DataViewerPanel.show(
                         context,
+                        connectionManager,
                         `Vectors - ${item.collectionName}`,
                         'vectors',
                         data
@@ -330,13 +339,14 @@ export function activate( context: vscode.ExtensionContext ) {
         if ( item?.collection && item?.connection ) {
             try {
                 // Show loading message
-                await vscode.window.withProgress({
+                await vscode.window.withProgress( {
                     location: vscode.ProgressLocation.Notification,
                     title: `Loading vectors from "${item.collection.name}"...`,
                     cancellable: false
-                }, async (progress) => {
-                    // Get vectors from the database
-                    const vectors = await connectionManager.listVectors(item.connection.id, item.collection.name);
+                }, async ( progress ) => {
+                    // Get vectors from the database (all vectors for webview)
+                    const vectorsResult = await connectionManager.listVectors( item.connection.id, item.collection.name, 0, 1000 );
+                    const vectors = vectorsResult.vectors;
 
                     // Open the webview panel
                     const panel = vscode.window.createWebviewPanel(
@@ -346,19 +356,19 @@ export function activate( context: vscode.ExtensionContext ) {
                         {
                             enableScripts: true,
                             retainContextWhenHidden: true,
-                            localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
+                            localResourceRoots: [vscode.Uri.joinPath( context.extensionUri, 'media' )]
                         }
                     );
 
                     // Get the webview HTML
-                    const scriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'vectors.js'));
-                    const styleUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'vectors.css'));
+                    const scriptUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'vectors.js' ) );
+                    const styleUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'vectors.css' ) );
 
-                    panel.webview.html = getVectorsWebviewHTML(panel.webview, vectors, item.collection.name, styleUri, scriptUri);
-                });
+                    panel.webview.html = getVectorsWebviewHTML( panel.webview, vectors, item.collection.name, styleUri, scriptUri );
+                } );
 
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to view vectors: ${error}`);
+            } catch ( error ) {
+                vscode.window.showErrorMessage( `Failed to view vectors: ${error}` );
             }
         }
     } );
@@ -508,9 +518,9 @@ export function activate( context: vscode.ExtensionContext ) {
     );
 }
 
-function getVectorsWebviewHTML(webview: vscode.Webview, vectors: any[], collectionName: string, styleUri: vscode.Uri, scriptUri: vscode.Uri): string {
-    const vectorsJson = JSON.stringify(vectors);
-    
+function getVectorsWebviewHTML( webview: vscode.Webview, vectors: any[], collectionName: string, styleUri: vscode.Uri, scriptUri: vscode.Uri ): string {
+    const vectorsJson = JSON.stringify( vectors );
+
     return `<!DOCTYPE html>
     <html lang="en">
     <head>
