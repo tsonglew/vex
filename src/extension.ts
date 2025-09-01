@@ -577,6 +577,22 @@ function generateId(): string {
     return Math.random().toString( 36 ).substring( 2, 9 );
 }
 
+function getDefaultPort(type: string): string {
+    switch (type) {
+        case 'milvus': return '19530';
+        case 'chroma': return '8000';
+        case 'pinecone': return '443';
+        case 'weaviate': return '8080';
+        case 'qdrant': return '6333';
+        case 'faiss': return '8000';
+        case 'elasticsearch': return '9200';
+        case 'vespa': return '8080';
+        case 'redis': return '6379';
+        case 'pgvector': return '5432';
+        default: return '8000';
+    }
+}
+
 async function showAddConnectionDialog(): Promise<any> {
     const name = await vscode.window.showInputBox( {
         prompt: 'Enter connection name',
@@ -584,9 +600,26 @@ async function showAddConnectionDialog(): Promise<any> {
     } );
     if ( !name ) { return null; }
 
-    const type = await vscode.window.showQuickPick( ['milvus', 'chroma'], {
-        title: 'Select database type'
-    } );
+    const typeOptions = [
+        { label: 'Milvus ✅ Fully supported', value: 'milvus' },
+        { label: 'Chroma 🔧 Partially supported', value: 'chroma' },
+        { label: 'Pinecone 🚧 Under development', value: 'pinecone' },
+        { label: 'Weaviate 🚧 Under development', value: 'weaviate' },
+        { label: 'Qdrant 🚧 Under development', value: 'qdrant' },
+        { label: 'FAISS 🚧 Under development', value: 'faiss' },
+        { label: 'Elasticsearch 🚧 Under development', value: 'elasticsearch' },
+        { label: 'Vespa 🚧 Under development', value: 'vespa' },
+        { label: 'Redis 🚧 Under development', value: 'redis' },
+        { label: 'PostgreSQL (pgvector) 🚧 Under development', value: 'pgvector' }
+    ];
+    
+    const typeSelection = await vscode.window.showQuickPick(typeOptions, {
+        title: 'Select Vector Database Type',
+        placeHolder: 'Choose a vector database to connect to'
+    });
+    
+    if (!typeSelection) { return null; }
+    const type = typeSelection.value;
     if ( !type ) { return null; }
 
     const host = await vscode.window.showInputBox( {
@@ -598,8 +631,8 @@ async function showAddConnectionDialog(): Promise<any> {
 
     const port = await vscode.window.showInputBox( {
         prompt: 'Enter port',
-        placeHolder: type === 'milvus' ? '19530' : '8000',
-        value: type === 'milvus' ? '19530' : '8000'
+        placeHolder: getDefaultPort(type),
+        value: getDefaultPort(type)
     } );
     if ( !port ) { return null; }
 

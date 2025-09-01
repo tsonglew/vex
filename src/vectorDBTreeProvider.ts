@@ -246,6 +246,22 @@ export class ServerConnectionItem extends TreeItem {
                 return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.blue' ) );
             case 'chroma':
                 return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.purple' ) );
+            case 'pinecone':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.green' ) );
+            case 'weaviate':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.orange' ) );
+            case 'qdrant':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.red' ) );
+            case 'faiss':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.yellow' ) );
+            case 'elasticsearch':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.blue' ) );
+            case 'vespa':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.purple' ) );
+            case 'redis':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.red' ) );
+            case 'pgvector':
+                return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.blue' ) );
             default:
                 return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.foreground' ) );
         }
@@ -330,7 +346,7 @@ export class PlaceholderItem extends TreeItem {
 export interface DatabaseConnection {
     id: string;
     name: string;
-    type: 'milvus' | 'chroma';
+    type: 'milvus' | 'chroma' | 'pinecone' | 'weaviate' | 'qdrant' | 'faiss' | 'elasticsearch' | 'vespa' | 'redis' | 'pgvector';
     host: string;
     port: string;
     username?: string;
