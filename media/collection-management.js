@@ -891,15 +891,184 @@
     }
 
     function getIndexParams(indexType) {
-        const params = {
-            FLAT: {},
-            IVF_FLAT: { nlist: 1024 },
-            IVF_SQ8: { nlist: 1024 },
-            IVF_PQ: { nlist: 1024, m: 16, nbits: 8 },
-            HNSW: { M: 16, efConstruction: 200 },
-            ANNOY: { n_trees: 8 }
+        const defaultParams = {
+            'FLAT': {},
+            'IVF_FLAT': { nlist: 1024 },
+            'IVF_SQ8': { nlist: 1024 },
+            'IVF_PQ': { nlist: 1024, m: 16, nbits: 8 },
+            'HNSW': { M: 16, efConstruction: 200 },
+            'ANNOY': { n_trees: 8 },
+            'DISKANN': { max_degree: 128, search_list_size: 100 }
         };
-        return params[indexType] || {};
+        return defaultParams[indexType] || {};
+    }
+
+    // New functions for enhanced features
+    function createAdvancedIndex() {
+        const fieldName = document.getElementById('index-field-select').value;
+        const indexType = document.getElementById('index-type-select').value;
+        const metricType = document.getElementById('index-metric-select').value;
+
+        if (!fieldName || !indexType || !metricType) {
+            alert('Please select field, index type, and metric type');
+            return;
+        }
+
+        const params = getIndexParams(indexType);
+        vscode.postMessage({
+            command: 'createIndex',
+            fieldName: fieldName,
+            indexType: indexType,
+            metricType: metricType,
+            params: params
+        });
+    }
+
+    function rebuildAllIndexes() {
+        if (confirm('Rebuild all indexes? This may take some time and will temporarily affect query performance.')) {
+            vscode.postMessage({ command: 'rebuildAllIndexes' });
+        }
+    }
+
+    function dropAllIndexes() {
+        if (confirm('🚨 Drop ALL indexes? This will significantly impact query performance until new indexes are created!')) {
+            vscode.postMessage({ command: 'dropAllIndexes' });
+        }
+    }
+
+    function analyzeIndexPerformance() {
+        vscode.postMessage({ command: 'analyzeIndexPerformance' });
+    }
+
+    function showPartitionStats() {
+        vscode.postMessage({ command: 'showPartitionStats' });
+    }
+
+    function compactPartitions() {
+        if (confirm('Compact all partitions? This will optimize storage and may take some time.')) {
+            vscode.postMessage({ command: 'compactPartitions' });
+        }
+    }
+
+    // Alias management functions
+    function createAlias() {
+        const aliasName = document.getElementById('new-alias-name').value.trim();
+        if (!aliasName) {
+            alert('Please enter an alias name');
+            return;
+        }
+
+        vscode.postMessage({
+            command: 'createAlias',
+            aliasName: aliasName,
+            collectionName: currentData.collectionInfo.name
+        });
+
+        document.getElementById('new-alias-name').value = '';
+    }
+
+    function dropAlias(aliasName) {
+        if (confirm(`Drop alias "${aliasName}"?`)) {
+            vscode.postMessage({
+                command: 'dropAlias',
+                aliasName: aliasName
+            });
+        }
+    }
+
+    function switchAliasTarget() {
+        const aliasName = document.getElementById('alias-select').value;
+        const newTarget = document.getElementById('new-target-collection').value.trim();
+
+        if (!aliasName || !newTarget) {
+            alert('Please select alias and enter new target collection');
+            return;
+        }
+
+        if (confirm(`Switch alias "${aliasName}" to target collection "${newTarget}"?`)) {
+            vscode.postMessage({
+                command: 'switchAliasTarget',
+                aliasName: aliasName,
+                newTargetCollection: newTarget
+            });
+        }
+    }
+
+    // Properties management functions
+    function updateCollectionProperties() {
+        const description = document.getElementById('collection-description').value.trim();
+        const consistencyLevel = document.getElementById('consistency-level').value;
+        const ttl = document.getElementById('collection-ttl').value;
+        const enableDynamicFields = document.getElementById('enable-dynamic-fields').value === 'true';
+        const mmapEnabled = document.getElementById('mmap-enabled').value === 'true';
+        const segmentSize = document.getElementById('segment-size').value;
+        const indexFileSize = document.getElementById('index-file-size').value;
+
+        vscode.postMessage({
+            command: 'updateCollectionProperties',
+            properties: {
+                description: description,
+                consistencyLevel: consistencyLevel,
+                ttl: ttl ? parseInt(ttl) : null,
+                enableDynamicFields: enableDynamicFields,
+                mmapEnabled: mmapEnabled,
+                segmentSize: segmentSize ? parseInt(segmentSize) : null,
+                indexFileSize: indexFileSize ? parseInt(indexFileSize) : null
+            }
+        });
+    }
+
+    function resetProperties() {
+        if (confirm('Reset all properties to their original values?')) {
+            renderUI(); // Re-render to reset form values
+        }
+    }
+
+    function renameCollection() {
+        const newName = prompt(`Enter new name for collection "${currentData.collectionInfo.name}":`, currentData.collectionInfo.name);
+        if (newName && newName !== currentData.collectionInfo.name) {
+            if (confirm(`Rename collection from "${currentData.collectionInfo.name}" to "${newName}"?`)) {
+                vscode.postMessage({
+                    command: 'renameCollection',
+                    newName: newName
+                });
+            }
+        }
+    }
+
+    // Enhanced operation functions
+    function importData() {
+        const fileInput = document.getElementById('import-file');
+        if (!fileInput.files.length) {
+            alert('Please select a file to import');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            try {
+                const data = JSON.parse(e.target.result);
+                vscode.postMessage({
+                    command: 'importData',
+                    data: data,
+                    fileName: file.name
+                });
+            } catch (error) {
+                alert('Invalid JSON file format');
+            }
+        };
+        
+        reader.readAsText(file);
+    }
+
+    function exportData() {
+        const format = document.getElementById('export-format').value;
+        vscode.postMessage({
+            command: 'exportData',
+            format: format
+        });
     }
 
     // Utility functions
@@ -909,7 +1078,7 @@
 
     function formatBytes(bytes) {
         const size = parseInt(bytes) || 0;
-        if (size === 0) return '0 B';
+        if (size === 0) { return '0 B'; }
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(size) / Math.log(k));
