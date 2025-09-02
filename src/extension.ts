@@ -671,14 +671,15 @@ async function setupCollectionManagementWebview(
                     vscode.window.showInformationMessage( `Partition "${data.partitionName}" dropped successfully` );
                     await loadCollectionData( panel, strategy, collectionName );
                     break;
-                case 'loadPartition':
-                    await strategy.loadPartition( collectionName, data.partitionName );
-                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" loaded successfully` );
+
+                case 'loadCollection':
+                    await strategy.loadCollection( collectionName );
+                    vscode.window.showInformationMessage( `Collection "${collectionName}" loaded successfully` );
                     await loadCollectionData( panel, strategy, collectionName );
                     break;
-                case 'releasePartition':
-                    await strategy.releasePartition( collectionName, data.partitionName );
-                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" released successfully` );
+                case 'releaseCollection':
+                    await strategy.releaseCollection( collectionName );
+                    vscode.window.showInformationMessage( `Collection "${collectionName}" released successfully` );
                     await loadCollectionData( panel, strategy, collectionName );
                     break;
             }

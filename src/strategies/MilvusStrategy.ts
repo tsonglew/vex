@@ -755,7 +755,7 @@ cd docker && docker-compose up -d` );
             // Step 3: Get collection statistics
             const stats = await this.client.getCollectionStatistics( { collection_name: collection } );
             console.log( 'Raw collection statistics response:', JSON.stringify( stats, null, 2 ) );
-            
+
             let parsedStats: any = {};
 
             // Handle different response formats
@@ -772,7 +772,7 @@ cd docker && docker-compose up -d` );
                 // Direct response format
                 parsedStats = stats;
             }
-            
+
             console.log( 'Parsed statistics object:', parsedStats );
 
             // Step 4: Get row count using alternative method if statistics are empty
@@ -843,7 +843,7 @@ cd docker && docker-compose up -d` );
             };
         } catch ( error ) {
             console.error( 'Error getting collection statistics:', error );
-            
+
             // Return fallback statistics with at least the row count if possible
             try {
                 console.log( 'Attempting fallback count query...' );
@@ -898,11 +898,22 @@ cd docker && docker-compose up -d` );
 
         try {
             const partitions = await this.client.showPartitions( { collection_name: collection } );
-            return partitions.partition_names?.map( ( name: string, index: number ) => ( {
-                name: name,
-                id: partitions.partitionIDs?.[index] || index,
-                createdTime: partitions.created_utc_timestamps?.[index] || null
-            } ) ) || [];
+            return partitions.partition_names?.map( ( name: string, index: number ) => {
+                const rawTimestamp = partitions.created_utc_timestamps?.[index];
+                let formattedTime = null;
+                
+                if ( rawTimestamp ) {
+                    // Convert Unix timestamp (in milliseconds) to readable format
+                    const timestamp = typeof rawTimestamp === 'string' ? parseInt( rawTimestamp ) : rawTimestamp;
+                    formattedTime = new Date( timestamp ).toISOString();
+                }
+                
+                return {
+                    name: name,
+                    id: partitions.partitionIDs?.[index] || index,
+                    createdTime: formattedTime
+                };
+            } ) || [];
         } catch ( error ) {
             console.error( 'Error getting partitions:', error );
             return [];
@@ -1010,6 +1021,46 @@ cd docker && docker-compose up -d` );
         } catch ( error ) {
             console.error( 'Error releasing partition:', error );
             throw new Error( `Failed to release partition: ${error}` );
+        }
+    }
+
+    // Collection-level load and release operations
+    async loadCollection( collection: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            console.log( `Loading collection "${collection}"...` );
+            await this.client.loadCollection( { collection_name: collection } );
+            console.log( `Collection "${collection}" loaded successfully` );
+        } catch ( error ) {
+            console.error( 'Error loading collection:', error );
+            
+            // Handle "already loaded" case as success
+            const errorMessage = error instanceof Error ? error.message : String( error );
+            if ( errorMessage.toLowerCase().includes( 'already loaded' ) ||
+                errorMessage.toLowerCase().includes( 'already exists' ) ) {
+                console.log( `Collection "${collection}" is already loaded` );
+                return;
+            }
+            
+            throw new Error( `Failed to load collection: ${error}` );
+        }
+    }
+
+    async releaseCollection( collection: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            console.log( `Releasing collection "${collection}"...` );
+            await this.client.releaseCollection( { collection_name: collection } );
+            console.log( `Collection "${collection}" released successfully` );
+        } catch ( error ) {
+            console.error( 'Error releasing collection:', error );
+            throw new Error( `Failed to release collection: ${error}` );
         }
     }
 }

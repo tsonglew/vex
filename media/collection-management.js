@@ -19,7 +19,7 @@
     });
 
     function updateUI () {
-        if (!currentData) return;
+        if (!currentData) { return; }
 
         const content = document.getElementById('content');
         content.innerHTML = `
@@ -52,6 +52,10 @@
                     ${currentData.collectionInfo.description ? `
                         <p><strong>Description:</strong> ${currentData.collectionInfo.description}</p>
                     ` : ''}
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary" onclick="loadCollection()">⬆️ Load Collection</button>
+                        <button class="btn btn-secondary" onclick="releaseCollection()">⬇️ Release Collection</button>
+                    </div>
                 </div>
             </div>
 
@@ -85,7 +89,6 @@
                     </div>
                     <div class="action-buttons">
                         <button class="btn" onclick="refreshData()">🔄 Refresh Statistics</button>
-                        <button class="btn btn-secondary" onclick="compactCollection()">🗜️ Compact Collection</button>
                     </div>
                 </div>
             </div>
@@ -204,12 +207,6 @@
                                     <td>${partition.id}</td>
                                     <td>${partition.createdTime ? new Date(partition.createdTime).toLocaleString() : '-'}</td>
                                     <td>
-                                        <button class="btn btn-secondary btn-sm" onclick="loadPartition('${partition.name}')">
-                                            ⬆️ Load
-                                        </button>
-                                        <button class="btn btn-secondary btn-sm" onclick="releasePartition('${partition.name}')">
-                                            ⬇️ Release
-                                        </button>
                                         ${partition.name !== '_default' ? `
                                             <button class="btn btn-danger btn-sm" onclick="dropPartition('${partition.name}')">
                                                 🗑️ Drop
@@ -250,12 +247,6 @@
 
     function refreshData () {
         vscode.postMessage({ command: 'refresh' });
-    }
-
-    function compactCollection() {
-        if (confirm('Compacting the collection will optimize storage and may improve statistics accuracy. This operation may take some time. Continue?')) {
-            vscode.postMessage({ command: 'compact' });
-        }
     }
 
     function createIndex () {
@@ -310,19 +301,23 @@
         }
     }
 
-    function loadPartition (partitionName) {
-        vscode.postMessage({
-            command: 'loadPartition',
-            partitionName: partitionName
-        });
+    function loadCollection () {
+        if (confirm('Loading the collection will make it available for queries and operations. Continue?')) {
+            vscode.postMessage({
+                command: 'loadCollection'
+            });
+        }
     }
 
-    function releasePartition (partitionName) {
-        vscode.postMessage({
-            command: 'releasePartition',
-            partitionName: partitionName
-        });
+    function releaseCollection () {
+        if (confirm('Releasing the collection will free up memory resources but make it unavailable for queries. Continue?')) {
+            vscode.postMessage({
+                command: 'releaseCollection'
+            });
+        }
     }
+
+
 
     function getDataTypeName (dataType) {
         const typeMap = {
@@ -347,7 +342,7 @@
 
     function formatBytes (bytes) {
         const size = parseInt(bytes) || 0;
-        if (size === 0) return '0 B';
+        if (size === 0) { return '0 B'; }
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(size) / Math.log(k));
@@ -355,7 +350,7 @@
     }
 
     function formatIndexParams (params) {
-        if (!params || typeof params !== 'object') return '-';
+        if (!params || typeof params !== 'object') { return '-'; }
         return Object.entries(params)
             .map(([key, value]) => `${key}: ${value}`)
             .join(', ');
