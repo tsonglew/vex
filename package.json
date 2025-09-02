@@ -179,13 +179,13 @@
       "view/item/context": [
         {
           "command": "vex.connectToDatabase",
-          "when": "view == vexVectorDBTree && viewItem == serverConnection",
+          "when": "view == vexVectorDBTree && viewItem == serverConnectionDisconnected",
           "group": "connection@1"
         },
         {
           "command": "vex.disconnectFromDatabase",
-          "when": "view == vexVectorDBTree && viewItem == serverConnection",
-          "group": "connection@2"
+          "when": "view == vexVectorDBTree && viewItem == serverConnectionConnected",
+          "group": "connection@1"
         },
         {
           "command": "vex.editConnection",
@@ -199,18 +199,18 @@
         },
         {
           "command": "vex.deleteServer",
-          "when": "view == vexVectorDBTree && viewItem == serverConnection",
+          "when": "view == vexVectorDBTree && (viewItem == serverConnectionConnected || viewItem == serverConnectionDisconnected)",
           "group": "management@2"
         },
         {
           "command": "vex.createDatabase",
-          "when": "view == vexVectorDBTree && viewItem == serverConnection",
+          "when": "view == vexVectorDBTree && viewItem == serverConnectionConnected",
           "group": "databases@1"
         },
         {
           "command": "vex.refreshConnectionStatus",
-          "when": "view == vexVectorDBTree && viewItem == serverConnection",
-          "group": "connection@3"
+          "when": "view == vexVectorDBTree && (viewItem == serverConnectionConnected || viewItem == serverConnectionDisconnected)",
+          "group": "connection@2"
         },
         {
           "command": "vex.createCollection",

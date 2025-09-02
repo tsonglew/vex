@@ -18,14 +18,35 @@ export function activate( context: vscode.ExtensionContext ) {
     const treeView = vscode.window.createTreeView( 'vexVectorDBTree', { treeDataProvider: treeProvider } );
 
     // Handle double-click on tree items
+    let lastClickTime = 0;
+    let lastClickedItem: any = null;
+    const DOUBLE_CLICK_TIMEOUT = 500; // milliseconds
+
     treeView.onDidChangeSelection( async ( e ) => {
         if ( e.selection && e.selection.length > 0 ) {
             const item = e.selection[0];
+            const currentTime = Date.now();
+            const isDoubleClick = item === lastClickedItem && (currentTime - lastClickTime) < DOUBLE_CLICK_TIMEOUT;
 
-            // Check if it's a collection item
-            if ( item.contextValue === 'collection' ) {
-                // Trigger collection management
-                await vscode.commands.executeCommand( 'vex.manageCollection', item );
+            lastClickedItem = item;
+            lastClickTime = currentTime;
+
+            if ( isDoubleClick ) {
+                // Handle double-click actions
+                if ( item.contextValue === 'collection' ) {
+                    // Trigger collection management
+                    await vscode.commands.executeCommand( 'vex.manageCollection', item );
+                } else if ( item.contextValue === 'serverConnectionConnected' || item.contextValue === 'serverConnectionDisconnected' ) {
+                    // Double-click on server to connect/disconnect
+                    const serverItem = item as any;
+                    if ( serverItem?.connection ) {
+                        if ( serverItem.connection.isConnected ) {
+                            await vscode.commands.executeCommand( 'vex.disconnectFromDatabase', serverItem );
+                        } else {
+                            await vscode.commands.executeCommand( 'vex.connectToDatabase', serverItem );
+                        }
+                    }
+                }
             }
         }
     } );

@@ -115,12 +115,12 @@
                         </thead>
                         <tbody>
                             ${currentData.collectionInfo.fields.map(field => {
-                                // Find associated index for this field
-                                const fieldIndex = currentData.indexes.find(index => 
-                                    (index.field_name || index.fieldName) === field.name
-                                );
-                                
-                                return `
+            // Find associated index for this field
+            const fieldIndex = currentData.indexes.find(index =>
+                (index.field_name || index.fieldName) === field.name
+            );
+
+            return `
                                 <tr>
                                     <td><strong>${field.name}</strong></td>
                                     <td>${getDataTypeName(field.data_type)}</td>
@@ -144,7 +144,7 @@
                                     </td>
                                 </tr>
                                 `;
-                            }).join('')}
+        }).join('')}
                         </tbody>
                     </table>
                     
@@ -270,7 +270,7 @@
 
         const indexType = indexTypes[parseInt(selectedType) - 1];
         const params = getDefaultIndexParams(indexType);
-        
+
         vscode.postMessage({
             command: 'createIndex',
             fieldName: fieldName,

@@ -214,7 +214,7 @@ export class ServerConnectionItem extends TreeItem {
         this.tooltip = this.getTooltip();
         this.description = this.getDescription();
         this.iconPath = this.getIcon();
-        this.contextValue = 'serverConnection';
+        this.contextValue = this.getContextValue();
     }
 
     private getTooltip(): string {
@@ -265,6 +265,12 @@ export class ServerConnectionItem extends TreeItem {
             default:
                 return new vscode.ThemeIcon( 'server', new vscode.ThemeColor( 'charts.foreground' ) );
         }
+    }
+
+    private getContextValue(): string {
+        // Return different context values based on connection status
+        // This allows different context menu items to be shown
+        return this.connection.isConnected ? 'serverConnectionConnected' : 'serverConnectionDisconnected';
     }
 }
 
