@@ -93,10 +93,10 @@
                 </div>
             </div>
 
-            <!-- Fields Section -->
+            <!-- Fields & Indexes Section -->
             <div class="section">
                 <div class="section-header collapsible" onclick="toggleCollapse(this)">
-                    🗂️ Fields (${currentData.collectionInfo.fields.length})
+                    🗂️ Fields & Indexes (${currentData.collectionInfo.fields.length} fields, ${currentData.indexes.length} indexes)
                 </div>
                 <div class="collapsible-content">
                     <table class="fields-table">
@@ -107,56 +107,44 @@
                                 <th>Dimension</th>
                                 <th>Primary Key</th>
                                 <th>Auto ID</th>
-                                <th>Description</th>
+                                <th>Index Type</th>
+                                <th>Metric Type</th>
+                                <th>Index Params</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${currentData.collectionInfo.fields.map(field => `
+                            ${currentData.collectionInfo.fields.map(field => {
+                                // Find associated index for this field
+                                const fieldIndex = currentData.indexes.find(index => 
+                                    (index.field_name || index.fieldName) === field.name
+                                );
+                                
+                                return `
                                 <tr>
                                     <td><strong>${field.name}</strong></td>
                                     <td>${getDataTypeName(field.data_type)}</td>
                                     <td>${field.type_params?.dim || field.dim || '-'}</td>
                                     <td>${field.is_primary_key ? '✅' : '❌'}</td>
                                     <td>${field.auto_id ? '✅' : '❌'}</td>
-                                    <td>${field.description || '-'}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Indexes Section -->
-            <div class="section">
-                <div class="section-header collapsible" onclick="toggleCollapse(this)">
-                    🔍 Indexes (${currentData.indexes.length})
-                </div>
-                <div class="collapsible-content">
-                    <table class="indexes-table">
-                        <thead>
-                            <tr>
-                                <th>Field</th>
-                                <th>Index Type</th>
-                                <th>Metric Type</th>
-                                <th>Parameters</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${currentData.indexes.map(index => `
-                                <tr>
-                                    <td><strong>${index.field_name || 'Unknown'}</strong></td>
-                                    <td>${index.index_type || 'Unknown'}</td>
-                                    <td>${index.metric_type || '-'}</td>
-                                    <td>${formatIndexParams(index.params)}</td>
+                                    <td>${fieldIndex ? (fieldIndex.index_type || 'Unknown') : '-'}</td>
+                                    <td>${fieldIndex ? (fieldIndex.metric_type || '-') : '-'}</td>
+                                    <td>${fieldIndex ? formatIndexParams(fieldIndex.params) : '-'}</td>
                                     <td>
-                                        <button class="btn btn-danger btn-sm" onclick="dropIndex('${index.index_name || index.field_name}')">
-                                            🗑️ Drop
-                                        </button>
+                                        ${field.data_type === 101 && !fieldIndex ? `
+                                            <button class="btn btn-secondary btn-sm" onclick="createIndexForField('${field.name}')">
+                                                ➕ Add Index
+                                            </button>
+                                        ` : ''}
+                                        ${fieldIndex ? `
+                                            <button class="btn btn-danger btn-sm" onclick="dropIndex('${fieldIndex.index_name || fieldIndex.field_name}')">
+                                                🗑️ Drop Index
+                                            </button>
+                                        ` : ''}
                                     </td>
                                 </tr>
-                            `).join('')}
-                            ${currentData.indexes.length === 0 ? '<tr><td colspan="5">No indexes found</td></tr>' : ''}
+                                `;
+                            }).join('')}
                         </tbody>
                     </table>
                     
@@ -164,9 +152,9 @@
                         <h4>Create New Index:</h4>
                         <div class="input-row">
                             <select id="field-select">
-                                <option value="">Select Field</option>
+                                <option value="">Select Vector Field</option>
                                 ${currentData.collectionInfo.fields
-                .filter(field => field.data_type === 101) // FloatVector
+                .filter(field => field.data_type === 101 && !currentData.indexes.find(index => (index.field_name || index.fieldName) === field.name)) // FloatVector without index
                 .map(field => `<option value="${field.name}">${field.name} (${field.type_params?.dim || field.dim}D)</option>`)
                 .join('')}
                             </select>
@@ -259,6 +247,30 @@
         }
 
         const params = getDefaultIndexParams(indexType);
+        vscode.postMessage({
+            command: 'createIndex',
+            fieldName: fieldName,
+            indexType: indexType,
+            params: params
+        });
+    }
+
+    function createIndexForField (fieldName) {
+        // Show a simple prompt for index type selection
+        const indexTypes = ['FLAT', 'IVF_FLAT', 'IVF_SQ8', 'IVF_PQ', 'HNSW', 'ANNOY'];
+        const selectedType = prompt(
+            `Create index for field "${fieldName}".\n\nSelect index type:\n` +
+            indexTypes.map((type, i) => `${i + 1}. ${type}${type === 'HNSW' ? ' (Recommended)' : ''}`).join('\n') +
+            '\n\nEnter number (1-6):'
+        );
+
+        if (!selectedType || isNaN(selectedType) || selectedType < 1 || selectedType > 6) {
+            return;
+        }
+
+        const indexType = indexTypes[parseInt(selectedType) - 1];
+        const params = getDefaultIndexParams(indexType);
+        
         vscode.postMessage({
             command: 'createIndex',
             fieldName: fieldName,

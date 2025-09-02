@@ -901,13 +901,13 @@ cd docker && docker-compose up -d` );
             return partitions.partition_names?.map( ( name: string, index: number ) => {
                 const rawTimestamp = partitions.created_utc_timestamps?.[index];
                 let formattedTime = null;
-                
+
                 if ( rawTimestamp ) {
                     // Convert Unix timestamp (in milliseconds) to readable format
                     const timestamp = typeof rawTimestamp === 'string' ? parseInt( rawTimestamp ) : rawTimestamp;
                     formattedTime = new Date( timestamp ).toISOString();
                 }
-                
+
                 return {
                     name: name,
                     id: partitions.partitionIDs?.[index] || index,
@@ -1036,7 +1036,7 @@ cd docker && docker-compose up -d` );
             console.log( `Collection "${collection}" loaded successfully` );
         } catch ( error ) {
             console.error( 'Error loading collection:', error );
-            
+
             // Handle "already loaded" case as success
             const errorMessage = error instanceof Error ? error.message : String( error );
             if ( errorMessage.toLowerCase().includes( 'already loaded' ) ||
@@ -1044,7 +1044,7 @@ cd docker && docker-compose up -d` );
                 console.log( `Collection "${collection}" is already loaded` );
                 return;
             }
-            
+
             throw new Error( `Failed to load collection: ${error}` );
         }
     }
