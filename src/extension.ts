@@ -26,7 +26,7 @@ export function activate( context: vscode.ExtensionContext ) {
         if ( e.selection && e.selection.length > 0 ) {
             const item = e.selection[0];
             const currentTime = Date.now();
-            const isDoubleClick = item === lastClickedItem && (currentTime - lastClickTime) < DOUBLE_CLICK_TIMEOUT;
+            const isDoubleClick = item === lastClickedItem && ( currentTime - lastClickTime ) < DOUBLE_CLICK_TIMEOUT;
 
             lastClickedItem = item;
             lastClickTime = currentTime;

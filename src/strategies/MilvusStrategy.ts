@@ -1,4 +1,4 @@
-import { MilvusClient, DataType, MetricType, IndexType, ListDatabasesResponse, ShowCollectionsResponse, CollectionData } from '@zilliz/milvus2-sdk-node';
+import { MilvusClient, DataType, MetricType, IndexType, ShowCollectionsResponse } from '@zilliz/milvus2-sdk-node';
 import { VectorDBStrategy } from './VectorDBStrategy';
 import * as vscode from 'vscode';
 
@@ -8,11 +8,6 @@ interface DatabaseInfo {
     id?: string;
 }
 
-interface GenericResponse {
-    data?: unknown[];
-    names?: string[];
-    databases?: unknown[];
-}
 
 export class MilvusStrategy implements VectorDBStrategy {
     readonly type = 'milvus';
@@ -350,22 +345,6 @@ cd docker && docker-compose up -d` );
         }
     }
 
-    async deleteCollection( name: string ): Promise<void> {
-        if ( !this.client ) {
-            throw new Error( 'Milvus client not connected' );
-        }
-
-        const args = { name };
-        console.log( 'Deleting collection with args:', args );
-
-        try {
-            await this.client.dropCollection( { collection_name: name } );
-            console.log( 'Collection deleted successfully' );
-        } catch ( error ) {
-            console.error( 'Error deleting collection:', error );
-            throw new Error( `Failed to delete collection with args ${JSON.stringify( args )}: ${error}` );
-        }
-    }
 
     /**
      * Check if a collection is loaded and prompt user to load it if needed
@@ -1061,6 +1040,368 @@ cd docker && docker-compose up -d` );
         } catch ( error ) {
             console.error( 'Error releasing collection:', error );
             throw new Error( `Failed to release collection: ${error}` );
+        }
+    }
+
+    /**
+     * Delete a collection with comprehensive error handling
+     */
+    async deleteCollection( collectionName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        const args = { collectionName };
+        console.log( 'Deleting collection with args:', args );
+
+        try {
+            // First check if collection exists
+            try {
+                await this.client.describeCollection( { collection_name: collectionName } );
+            } catch ( describeError ) {
+                const describeErrorMsg = describeError instanceof Error ? describeError.message : String( describeError );
+                if ( describeErrorMsg.toLowerCase().includes( 'not found' ) ||
+                    describeErrorMsg.toLowerCase().includes( 'does not exist' ) ) {
+                    throw new Error( `Collection "${collectionName}" does not exist.` );
+                }
+                throw describeError;
+            }
+
+            // Release collection if loaded before deletion
+            try {
+                await this.client.releaseCollection( { collection_name: collectionName } );
+                console.log( `Collection "${collectionName}" released before deletion` );
+            } catch ( releaseError ) {
+                console.warn( `Could not release collection "${collectionName}" before deletion:`, releaseError );
+            }
+
+            // Drop the collection
+            await this.client.dropCollection( { collection_name: collectionName } );
+            console.log( `Collection "${collectionName}" deleted successfully` );
+        } catch ( error ) {
+            console.error( 'Error deleting collection:', error );
+            throw new Error( `Failed to delete collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
+        }
+    }
+
+    /**
+     * Add a new field to an existing collection
+     */
+    async addField(
+        collectionName: string,
+        fieldName: string,
+        fieldType: string,
+        dimension?: number,
+        nullable?: boolean,
+        defaultValue?: string
+    ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        const args = { collectionName, fieldName, fieldType, dimension, nullable, defaultValue };
+        console.log( 'Adding field with args:', args );
+
+        try {
+            // First, get the current collection schema
+            const collectionInfo = await this.client.describeCollection( { collection_name: collectionName } );
+            
+            if ( !collectionInfo.schema ) {
+                throw new Error( 'Could not retrieve collection schema' );
+            }
+
+            // Check if field already exists
+            const existingField = collectionInfo.schema.fields?.find( ( field: any ) => field.name === fieldName );
+            if ( existingField ) {
+                throw new Error( `Field "${fieldName}" already exists in collection "${collectionName}"` );
+            }
+
+            // Map string field type to DataType
+            const fieldTypeMap: { [key: string]: any } = {
+                'int64': DataType.Int64,
+                'int32': DataType.Int32,
+                'int16': DataType.Int16,
+                'int8': DataType.Int8,
+                'float': DataType.Float,
+                'double': DataType.Double,
+                'bool': DataType.Bool,
+                'string': DataType.VarChar,
+                'varchar': DataType.VarChar,
+                'binary_vector': DataType.BinaryVector,
+                'float_vector': DataType.FloatVector
+            };
+
+            const mappedType = fieldTypeMap[fieldType.toLowerCase()];
+            if ( !mappedType ) {
+                throw new Error( `Unsupported field type: ${fieldType}` );
+            }
+
+            // Prepare new field schema
+            const newField: any = {
+                name: fieldName,
+                data_type: mappedType
+            };
+
+            if ( dimension && ( fieldType.toLowerCase().includes( 'vector' ) ) ) {
+                newField.dim = dimension;
+            }
+
+            if ( nullable !== undefined ) {
+                newField.nullable = nullable;
+            }
+
+            if ( defaultValue !== undefined ) {
+                newField.default_value = defaultValue;
+            }
+
+            // Create new collection with updated schema
+            const newFields = [...( collectionInfo.schema?.fields || [] ), newField ];
+            const tempCollectionName = `${collectionName}_temp_${Date.now()}`;
+
+            // Map consistency level string to proper type
+            const consistencyLevelMap: { [key: string]: any } = {
+                'Strong': 'Strong',
+                'Session': 'Session',
+                'Bounded': 'Bounded',
+                'Eventually': 'Eventually',
+                'Customized': 'Customized'
+            };
+
+            const consistencyLevel = collectionInfo.consistency_level ? 
+                consistencyLevelMap[collectionInfo.consistency_level as string] || 'Session' : 'Session';
+
+            try {
+                // Create new collection with updated schema
+                await this.client.createCollection( {
+                    collection_name: tempCollectionName,
+                    fields: newFields,
+                    consistency_level: consistencyLevel
+                } );
+
+                // Copy data from old collection to new collection
+                try {
+                    await this.client.query( {
+                        collection_name: collectionName,
+                        output_fields: ['*'],
+                        limit: 16384
+                    } ).then( async ( response ) => {
+                        if ( response?.data && response.data.length > 0 ) {
+                            await this.client.insert( {
+                                collection_name: tempCollectionName,
+                                data: response.data
+                            } );
+                        }
+                    } );
+                } catch ( copyError ) {
+                    console.warn( 'Could not copy existing data:', copyError );
+                }
+
+                // Drop old collection
+                await this.client.dropCollection( { collection_name: collectionName } );
+
+                // Rename new collection to old name (create alias)
+                await this.client.createAlias( {
+                    collection_name: tempCollectionName,
+                    alias: collectionName
+                } );
+
+                console.log( `Field "${fieldName}" added to collection "${collectionName}" successfully` );
+            } catch ( fieldError ) {
+                // Cleanup temp collection if something went wrong
+                try {
+                    await this.client.dropCollection( { collection_name: tempCollectionName } );
+                } catch ( cleanupError ) {
+                    console.warn( 'Failed to cleanup temporary collection:', cleanupError );
+                }
+                throw fieldError;
+            }
+        } catch ( error ) {
+            console.error( 'Error adding field:', error );
+            throw new Error( `Failed to add field "${fieldName}" to collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
+        }
+    }
+
+    /**
+     * Update collection properties
+     */
+    async updateCollectionProperties( collectionName: string, properties: any ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        const args = { collectionName, properties };
+        console.log( 'Updating collection properties with args:', args );
+
+        try {
+            // Check if collection exists
+            try {
+                await this.client.describeCollection( { collection_name: collectionName } );
+            } catch ( describeError ) {
+                const describeErrorMsg = describeError instanceof Error ? describeError.message : String( describeError );
+                if ( describeErrorMsg.toLowerCase().includes( 'not found' ) ||
+                    describeErrorMsg.toLowerCase().includes( 'does not exist' ) ) {
+                    throw new Error( `Collection "${collectionName}" does not exist.` );
+                }
+                throw describeError;
+            }
+
+            // Update collection properties
+            // Note: alterCollection is deprecated, using the current method for compatibility
+            // @ts-ignore - deprecation warning suppressed for compatibility
+            await this.client.alterCollection( {
+                collection_name: collectionName,
+                properties: properties
+            } );
+
+            console.log( `Collection properties updated for "${collectionName}" successfully` );
+        } catch ( error ) {
+            console.error( 'Error updating collection properties:', error );
+            throw new Error( `Failed to update collection properties for "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
+        }
+    }
+
+    /**
+     * Flush collection data to disk
+     */
+    async flushCollection( collectionName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        const args = { collectionName };
+        console.log( 'Flushing collection with args:', args );
+
+        try {
+            // Check if collection exists
+            try {
+                await this.client.describeCollection( { collection_name: collectionName } );
+            } catch ( describeError ) {
+                const describeErrorMsg = describeError instanceof Error ? describeError.message : String( describeError );
+                if ( describeErrorMsg.toLowerCase().includes( 'not found' ) ||
+                    describeErrorMsg.toLowerCase().includes( 'does not exist' ) ) {
+                    throw new Error( `Collection "${collectionName}" does not exist.` );
+                }
+                throw describeError;
+            }
+
+            await this.client.flush( { collection_names: [collectionName] } );
+            console.log( `Collection "${collectionName}" flushed successfully` );
+        } catch ( error ) {
+            console.error( 'Error flushing collection:', error );
+            throw new Error( `Failed to flush collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
+        }
+    }
+
+    /**
+     * Truncate collection data (remove all entities but keep schema)
+     */
+    async truncateCollection( collectionName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        const args = { collectionName };
+        console.log( 'Truncating collection with args:', args );
+
+        try {
+            // Check if collection exists
+            try {
+                await this.client.describeCollection( { collection_name: collectionName } );
+            } catch ( describeError ) {
+                const describeErrorMsg = describeError instanceof Error ? describeError.message : String( describeError );
+                if ( describeErrorMsg.toLowerCase().includes( 'not found' ) ||
+                    describeErrorMsg.toLowerCase().includes( 'does not exist' ) ) {
+                    throw new Error( `Collection "${collectionName}" does not exist.` );
+                }
+                throw describeError;
+            }
+
+            // Release collection if loaded
+            try {
+                await this.client.releaseCollection( { collection_name: collectionName } );
+                console.log( `Collection "${collectionName}" released for truncation` );
+            } catch ( releaseError ) {
+                console.warn( `Could not release collection "${collectionName}" for truncation:`, releaseError );
+            }
+
+            // Delete all entities from the collection
+            await this.client.delete( {
+                collection_name: collectionName,
+                filter: '' // Empty filter to delete all entities
+            } );
+
+            // Flush to ensure deletion is persisted
+            await this.client.flush( { collection_names: [collectionName] } );
+
+            console.log( `Collection "${collectionName}" truncated successfully` );
+        } catch ( error ) {
+            console.error( 'Error truncating collection:', error );
+            throw new Error( `Failed to truncate collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
+        }
+    }
+
+    /**
+     * Delete all entities from a collection
+     */
+    async deleteAllEntities( collectionName: string ): Promise<number> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        const args = { collectionName };
+        console.log( 'Deleting all entities with args:', args );
+
+        try {
+            // Check if collection exists
+            try {
+                await this.client.describeCollection( { collection_name: collectionName } );
+            } catch ( describeError ) {
+                const describeErrorMsg = describeError instanceof Error ? describeError.message : String( describeError );
+                if ( describeErrorMsg.toLowerCase().includes( 'not found' ) ||
+                    describeErrorMsg.toLowerCase().includes( 'does not exist' ) ) {
+                    throw new Error( `Collection "${collectionName}" does not exist.` );
+                }
+                throw describeError;
+            }
+
+            // Ensure collection is loaded
+            await this.ensureCollectionLoaded( collectionName );
+
+            // Get total count before deletion
+            let totalCount = 0;
+            try {
+                const countResponse = await this.client.query( {
+                    collection_name: collectionName,
+                    output_fields: ['count(*)']
+                } );
+                if ( countResponse.data && countResponse.data.length > 0 ) {
+                    totalCount = parseInt( countResponse.data[0]['count(*)'] ) || 0;
+                }
+            } catch ( countError ) {
+                console.warn( 'Could not get entity count before deletion:', countError );
+            }
+
+            if ( totalCount === 0 ) {
+                console.log( `Collection "${collectionName}" is already empty` );
+                return 0;
+            }
+
+            // Delete all entities
+            const response = await this.client.delete( {
+                collection_name: collectionName,
+                filter: '' // Empty filter to delete all entities
+            } );
+
+            const deletedCount = Number( response.delete_cnt ) || totalCount;
+
+            // Flush to ensure deletion is persisted
+            await this.client.flush( { collection_names: [collectionName] } );
+
+            console.log( `Deleted ${deletedCount} entities from collection "${collectionName}"` );
+            return deletedCount;
+        } catch ( error ) {
+            console.error( 'Error deleting all entities:', error );
+            throw new Error( `Failed to delete all entities from collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
         }
     }
 }

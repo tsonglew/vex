@@ -15,6 +15,20 @@ export interface VectorDBStrategy {
     listCollections(): Promise<Array<{ name: string;[key: string]: any }>>;
     createCollection( name: string, dimension: number, metric: string ): Promise<void>;
     deleteCollection( name: string ): Promise<void>;
+    addField(
+        collectionName: string,
+        fieldName: string,
+        fieldType: string,
+        dimension?: number,
+        nullable?: boolean,
+        defaultValue?: string
+    ): Promise<void>;
+    updateCollectionProperties( collectionName: string, properties: any ): Promise<void>;
+    flushCollection( collectionName: string ): Promise<void>;
+    truncateCollection( collectionName: string ): Promise<void>;
+    deleteAllEntities( collectionName: string ): Promise<number>;
+    loadPartition( collectionName: string, partitionName: string ): Promise<void>;
+    releasePartition( collectionName: string, partitionName: string ): Promise<void>;
 
     // Vector operations  
     insertVectors( collection: string, vectors: number[][], ids?: string[], metadata?: any[] ): Promise<number>;

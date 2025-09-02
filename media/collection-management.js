@@ -2,6 +2,7 @@
     const vscode = acquireVsCodeApi();
 
     let currentData = null;
+    let activeTab = 'overview';
 
     // Listen for messages from the extension
     window.addEventListener('message', event => {
@@ -10,181 +11,311 @@
         switch (message.command) {
             case 'updateCollectionData':
                 currentData = message.data;
-                updateUI();
+                renderUI();
                 break;
             case 'showError':
                 showError(message.message);
                 break;
+            case 'operationComplete':
+                showSuccess(message.message);
+                refreshData();
+                break;
         }
     });
 
-    function updateUI () {
+    function renderUI() {
         if (!currentData) { return; }
 
         const content = document.getElementById('content');
         content.innerHTML = `
-            <h2>Collection: ${currentData.collectionInfo.name}</h2>
-            
-            <!-- Collection Info Section -->
-            <div class="section">
-                <div class="section-header collapsible" onclick="toggleCollapse(this)">
-                    📋 Collection Information
-                </div>
-                <div class="collapsible-content">
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-label">Load State</div>
-                            <div class="stat-value">${currentData.collectionInfo.loadState}</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-label">Consistency Level</div>
-                            <div class="stat-value">${currentData.collectionInfo.consistencyLevel}</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-label">Auto ID</div>
-                            <div class="stat-value">${currentData.collectionInfo.autoId ? 'Yes' : 'No'}</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-label">Field Count</div>
-                            <div class="stat-value">${currentData.collectionInfo.fields.length}</div>
-                        </div>
-                    </div>
-                    ${currentData.collectionInfo.description ? `
-                        <p><strong>Description:</strong> ${currentData.collectionInfo.description}</p>
-                    ` : ''}
-                    <div class="action-buttons">
-                        <button class="btn btn-secondary" onclick="loadCollection()">⬆️ Load Collection</button>
-                        <button class="btn btn-secondary" onclick="releaseCollection()">⬇️ Release Collection</button>
-                    </div>
+            <div class="header">
+                <h1>📊 Collection: ${currentData.collectionInfo.name}</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="refreshData()">🔄 Refresh</button>
+                    <button class="btn btn-danger" onclick="deleteCollection()">🗑️ Delete Collection</button>
                 </div>
             </div>
 
-            <!-- Statistics Section -->
-            <div class="section">
-                <div class="section-header collapsible" onclick="toggleCollapse(this)">
-                    📊 Statistics
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button class="tab-button ${activeTab === 'overview' ? 'active' : ''}" onclick="switchTab('overview')">📋 Overview</button>
+                <button class="tab-button ${activeTab === 'schema' ? 'active' : ''}" onclick="switchTab('schema')">🗂️ Schema & Indexes</button>
+                <button class="tab-button ${activeTab === 'partitions' ? 'active' : ''}" onclick="switchTab('partitions')">📂 Partitions</button>
+                <button class="tab-button ${activeTab === 'aliases' ? 'active' : ''}" onclick="switchTab('aliases')">🔗 Aliases</button>
+                <button class="tab-button ${activeTab === 'operations' ? 'active' : ''}" onclick="switchTab('operations')">⚙️ Operations</button>
+                <button class="tab-button ${activeTab === 'properties' ? 'active' : ''}" onclick="switchTab('properties')">⚙️ Properties</button>
+            </div>
+
+            <div class="tab-content">
+                ${renderTabContent()}
+            </div>
+        `;
+    }
+
+    function switchTab(tab) {
+        activeTab = tab;
+        renderUI();
+    }
+
+    function renderTabContent() {
+        switch (activeTab) {
+            case 'overview':
+                return renderOverviewTab();
+            case 'schema':
+                return renderSchemaTab();
+            case 'partitions':
+                return renderPartitionsTab();
+            case 'aliases':
+                return renderAliasesTab();
+            case 'operations':
+                return renderOperationsTab();
+            case 'properties':
+                return renderPropertiesTab();
+            default:
+                return '';
+        }
+    }
+
+    function renderOverviewTab() {
+        return `
+            <div class="overview-grid">
+                <!-- Collection Status -->
+                <div class="card">
+                    <h3>📈 Collection Status</h3>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <span class="label">Load State</span>
+                            <span class="value ${currentData.collectionInfo.loadState === 'Loaded' ? 'loaded' : 'unloaded'}">
+                                ${currentData.collectionInfo.loadState}
+                            </span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Consistency Level</span>
+                            <span class="value">${currentData.collectionInfo.consistencyLevel}</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Auto ID</span>
+                            <span class="value">${currentData.collectionInfo.autoId ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Description</span>
+                            <span class="value">${currentData.collectionInfo.description || 'No description'}</span>
+                        </div>
                 </div>
-                <div class="collapsible-content">
+            </div>
+
+                <!-- Statistics -->
+                <div class="card">
+                    <h3>📊 Statistics</h3>
                     <div class="stats-grid">
                         <div class="stat-item">
-                            <div class="stat-label">Total Vectors</div>
-                            <div class="stat-value">${formatNumber(currentData.collectionStats.rowCount)}</div>
+                            <div class="stat-number">${formatNumber(currentData.collectionStats.rowCount)}</div>
+                            <div class="stat-label">Total Entities</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-label">Indexed Segments</div>
-                            <div class="stat-value">${currentData.collectionStats.indexedSegments}</div>
-                        </div>
-                        <div class="stat-item">
+                            <div class="stat-number">${currentData.collectionStats.totalSegments}</div>
                             <div class="stat-label">Total Segments</div>
-                            <div class="stat-value">${currentData.collectionStats.totalSegments}</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-label">Memory Size</div>
-                            <div class="stat-value">${formatBytes(currentData.collectionStats.memorySize)}</div>
+                            <div class="stat-number">${formatBytes(currentData.collectionStats.memorySize)}</div>
+                            <div class="stat-label">Memory Usage</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-label">Disk Size</div>
-                            <div class="stat-value">${formatBytes(currentData.collectionStats.diskSize)}</div>
+                            <div class="stat-number">${formatBytes(currentData.collectionStats.diskSize)}</div>
+                            <div class="stat-label">Disk Usage</div>
                         </div>
                     </div>
-                    <div class="action-buttons">
-                        <button class="btn" onclick="refreshData()">🔄 Refresh Statistics</button>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card">
+                    <h3>⚡ Quick Actions</h3>
+                    <div class="action-grid">
+                        <button class="action-btn ${currentData.collectionInfo.loadState === 'Loaded' ? 'disabled' : ''}" 
+                                onclick="loadCollection()" ${currentData.collectionInfo.loadState === 'Loaded' ? 'disabled' : ''}>
+                            ⬆️ Load Collection
+                        </button>
+                        <button class="action-btn ${currentData.collectionInfo.loadState !== 'Loaded' ? 'disabled' : ''}" 
+                                onclick="releaseCollection()" ${currentData.collectionInfo.loadState !== 'Loaded' ? 'disabled' : ''}>
+                            ⬇️ Release Collection
+                        </button>
+                        <button class="action-btn" onclick="compactCollection()">
+                            🗜️ Compact Collection
+                        </button>
+                        <button class="action-btn" onclick="flushCollection()">
+                            💾 Flush Collection
+                        </button>
                     </div>
                 </div>
             </div>
+        `;
+    }
 
-            <!-- Fields & Indexes Section -->
-            <div class="section">
-                <div class="section-header collapsible" onclick="toggleCollapse(this)">
-                    🗂️ Fields & Indexes (${currentData.collectionInfo.fields.length} fields, ${currentData.indexes.length} indexes)
+    function renderSchemaTab() {
+        return `
+            <div class="schema-container">
+                <!-- Collection Schema Overview -->
+                <div class="card">
+                    <h3>📋 Schema Information</h3>
+                    <div class="schema-info">
+                        <div class="info-item">
+                            <span class="label">Collection Name:</span>
+                            <span class="value">${currentData.collectionInfo.name}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Total Fields:</span>
+                            <span class="value">${currentData.collectionInfo.fields.length}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Vector Fields:</span>
+                            <span class="value">${currentData.collectionInfo.fields.filter(f => f.data_type === 101 || f.data_type === 100).length}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Indexed Fields:</span>
+                            <span class="value">${currentData.indexes.length}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="collapsible-content">
+
+                <!-- Fields & Indexes Unified Table -->
+                <div class="card">
+                    <h3>🗂️ Fields & Indexes</h3>
+                    <div class="table-container">
                     <table class="fields-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Type</th>
+                                    <th>Field Name</th>
+                                    <th>Data Type</th>
                                 <th>Dimension</th>
                                 <th>Primary Key</th>
                                 <th>Auto ID</th>
-                                <th>Index Type</th>
-                                <th>Metric Type</th>
-                                <th>Index Params</th>
-                                <th>Actions</th>
+                                    <th>Index Type</th>
+                                    <th>Metric Type</th>
+                                    <th>Index Parameters</th>
+                                    <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${currentData.collectionInfo.fields.map(field => {
-            // Find associated index for this field
-            const fieldIndex = currentData.indexes.find(index =>
-                (index.field_name || index.fieldName) === field.name
-            );
-
-            return `
+                                ${currentData.collectionInfo.fields.map(field => {
+                                    const fieldIndex = currentData.indexes.find(index =>
+                                        (index.field_name || index.fieldName) === field.name
+                                    );
+                                    return `
                                 <tr>
                                     <td><strong>${field.name}</strong></td>
-                                    <td>${getDataTypeName(field.data_type)}</td>
+                                            <td>
+                                                <span class="data-type ${field.data_type === 101 || field.data_type === 100 ? 'vector-type' : 'scalar-type'}">
+                                                    ${getDataTypeName(field.data_type)}
+                                                </span>
+                                            </td>
                                     <td>${field.type_params?.dim || field.dim || '-'}</td>
-                                    <td>${field.is_primary_key ? '✅' : '❌'}</td>
-                                    <td>${field.auto_id ? '✅' : '❌'}</td>
-                                    <td>${fieldIndex ? (fieldIndex.index_type || 'Unknown') : '-'}</td>
-                                    <td>${fieldIndex ? (fieldIndex.metric_type || '-') : '-'}</td>
-                                    <td>${fieldIndex ? formatIndexParams(fieldIndex.params) : '-'}</td>
-                                    <td>
-                                        ${field.data_type === 101 && !fieldIndex ? `
-                                            <button class="btn btn-secondary btn-sm" onclick="createIndexForField('${field.name}')">
-                                                ➕ Add Index
-                                            </button>
-                                        ` : ''}
-                                        ${fieldIndex ? `
-                                            <button class="btn btn-danger btn-sm" onclick="dropIndex('${fieldIndex.index_name || fieldIndex.field_name}')">
-                                                🗑️ Drop Index
-                                            </button>
-                                        ` : ''}
-                                    </td>
+                                            <td>${field.is_primary_key ? '🔑' : '-'}</td>
+                                            <td>${field.auto_id ? '🤖' : '-'}</td>
+                                            <td>${fieldIndex ? fieldIndex.index_type || 'Unknown' : '-'}</td>
+                                            <td>${fieldIndex ? fieldIndex.metric_type || '-' : '-'}</td>
+                                            <td class="index-params">${fieldIndex ? formatIndexParams(fieldIndex.params) : '-'}</td>
+                                            <td class="action-cell">
+                                                ${(field.data_type === 101 || field.data_type === 100) && !fieldIndex ? `
+                                                    <button class="btn btn-sm btn-primary" onclick="createIndexForField('${field.name}')">
+                                                        ➕ Add Index
+                                                    </button>
+                                                ` : ''}
+                                                ${fieldIndex ? `
+                                                    <button class="btn btn-sm btn-danger" onclick="dropIndex('${fieldIndex.index_name || fieldIndex.field_name}')">
+                                                        🗑️ Drop Index
+                                                    </button>
+                                                ` : ''}
+                                            </td>
                                 </tr>
-                                `;
-        }).join('')}
+                                    `;
+                                }).join('')}
                         </tbody>
                     </table>
-                    
-                    <div class="action-buttons">
-                        <h4>Create New Index:</h4>
-                        <div class="input-row">
-                            <select id="field-select">
-                                <option value="">Select Vector Field</option>
+                </div>
+            </div>
+
+                <!-- Index Management Actions -->
+                <div class="card">
+                    <h3>🔍 Index Management</h3>
+                    <div class="index-actions">
+                        <div class="action-section">
+                            <h4>Create New Index</h4>
+                            <div class="form-row">
+                                <select id="index-field-select" class="form-select">
+                                    <option value="">Select vector field</option>
                                 ${currentData.collectionInfo.fields
-                .filter(field => field.data_type === 101 && !currentData.indexes.find(index => (index.field_name || index.fieldName) === field.name)) // FloatVector without index
-                .map(field => `<option value="${field.name}">${field.name} (${field.type_params?.dim || field.dim}D)</option>`)
+                                        .filter(f => (f.data_type === 101 || f.data_type === 100) && !currentData.indexes.find(idx => (idx.field_name || idx.fieldName) === f.name))
+                                        .map(f => `<option value="${f.name}">${f.name} (${f.type_params?.dim || f.dim}D ${getDataTypeName(f.data_type)})</option>`)
                 .join('')}
                             </select>
-                            <select id="index-type-select">
-                                <option value="">Select Index Type</option>
-                                <option value="FLAT">FLAT</option>
-                                <option value="IVF_FLAT">IVF_FLAT</option>
-                                <option value="IVF_SQ8">IVF_SQ8</option>
-                                <option value="IVF_PQ">IVF_PQ</option>
-                                <option value="HNSW">HNSW (Recommended)</option>
-                                <option value="ANNOY">ANNOY</option>
+                                <select id="index-type-select" class="form-select">
+                                    <option value="">Select index type</option>
+                                    <option value="FLAT">FLAT - Brute Force</option>
+                                    <option value="IVF_FLAT">IVF_FLAT - Inverted File</option>
+                                    <option value="IVF_SQ8">IVF_SQ8 - Scalar Quantizer</option>
+                                    <option value="IVF_PQ">IVF_PQ - Product Quantizer</option>
+                                    <option value="HNSW">HNSW - Hierarchical NSW (Recommended)</option>
+                                    <option value="ANNOY">ANNOY - Approximate Nearest</option>
+                                    <option value="DISKANN">DiskANN - Disk-based ANN</option>
+                                </select>
+                                <select id="index-metric-select" class="form-select">
+                                    <option value="">Select metric type</option>
+                                    <option value="L2">L2 - Euclidean Distance</option>
+                                    <option value="IP">IP - Inner Product</option>
+                                    <option value="COSINE">COSINE - Cosine Similarity</option>
+                                    <option value="HAMMING">HAMMING - Hamming Distance</option>
+                                    <option value="JACCARD">JACCARD - Jaccard Distance</option>
                             </select>
-                            <button class="btn" onclick="createIndex()">➕ Create Index</button>
+                                <button class="btn btn-primary" onclick="createAdvancedIndex()">Create Index</button>
+                            </div>
+                        </div>
+                        
+                        <div class="action-section">
+                            <h4>Bulk Operations</h4>
+                            <div class="form-row">
+                                <button class="btn btn-warning" onclick="rebuildAllIndexes()">🔄 Rebuild All Indexes</button>
+                                <button class="btn btn-danger" onclick="dropAllIndexes()">🗑️ Drop All Indexes</button>
+                                <button class="btn btn-info" onclick="analyzeIndexPerformance()">📊 Analyze Performance</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+        `;
+    }
 
-            <!-- Partitions Section -->
-            <div class="section">
-                <div class="section-header collapsible" onclick="toggleCollapse(this)">
-                    📂 Partitions (${currentData.partitions.length})
+    function renderPartitionsTab() {
+        return `
+            <div class="partitions-container">
+                <!-- Partition Overview -->
+                <div class="card">
+                    <h3>📂 Partition Management</h3>
+                    <div class="partition-overview">
+                        <div class="overview-stats">
+                            <div class="stat">
+                                <span class="stat-number">${currentData.partitions.length}</span>
+                                <span class="stat-label">Total Partitions</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-number">${currentData.partitions.filter(p => p.loaded).length}</span>
+                                <span class="stat-label">Loaded Partitions</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="collapsible-content">
+
+                <!-- Current Partitions -->
+                <div class="card">
+                    <h3>📋 Partition Details</h3>
+                    <div class="table-container">
                     <table class="partitions-table">
                         <thead>
                             <tr>
                                 <th>Name</th>
                                 <th>ID</th>
-                                <th>Created Time</th>
+                                    <th>Created</th>
+                                    <th>Entities</th>
+                                    <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -192,26 +323,49 @@
                             ${currentData.partitions.map(partition => `
                                 <tr>
                                     <td><strong>${partition.name}</strong></td>
-                                    <td>${partition.id}</td>
+                                        <td class="partition-id">${partition.id}</td>
                                     <td>${partition.createdTime ? new Date(partition.createdTime).toLocaleString() : '-'}</td>
-                                    <td>
+                                        <td class="entity-count">${formatNumber(partition.rowCount || 0)}</td>
+                                        <td>
+                                            <span class="status-badge ${partition.loaded ? 'loaded' : 'unloaded'}">
+                                                ${partition.loaded ? '✅ Loaded' : '⏸️ Unloaded'}
+                                            </span>
+                                        </td>
+                                        <td class="action-cell">
                                         ${partition.name !== '_default' ? `
-                                            <button class="btn btn-danger btn-sm" onclick="dropPartition('${partition.name}')">
+                                                <div class="action-buttons">
+                                                    <button class="btn btn-sm btn-danger" 
+                                                            onclick="dropPartition('${partition.name}')">
                                                 🗑️ Drop
                                             </button>
+                                                </div>
                                         ` : ''}
                                     </td>
                                 </tr>
                             `).join('')}
-                            ${currentData.partitions.length === 0 ? '<tr><td colspan="4">No partitions found</td></tr>' : ''}
-                        </tbody>
-                    </table>
-                    
-                    <div class="action-buttons">
-                        <h4>Create New Partition:</h4>
-                        <div class="input-row">
-                            <input type="text" id="partition-name-input" placeholder="Partition name">
-                            <button class="btn" onclick="createPartition()">➕ Create Partition</button>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Partition Management -->
+                <div class="card">
+                    <h3>⚙️ Partition Management</h3>
+                    <div class="partition-actions">
+                        <div class="action-section">
+                            <h4>Create New Partition</h4>
+                            <div class="form-row">
+                                <input type="text" id="new-partition-name" placeholder="Enter partition name" class="form-input">
+                                <button class="btn btn-primary" onclick="createPartition()">➕ Create Partition</button>
+                            </div>
+                        </div>
+                        
+                        <div class="action-section">
+                            <h4>Bulk Operations</h4>
+                            <div class="form-row">
+                                <button class="btn btn-secondary" onclick="showPartitionStats()">📊 View Statistics</button>
+                                <button class="btn btn-info" onclick="compactPartitions()">🗜️ Compact All</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -219,68 +373,419 @@
         `;
     }
 
-    function showError (message) {
-        const content = document.getElementById('content');
-        content.innerHTML = `
-            <div class="error">
-                <strong>Error:</strong> ${message}
+    function renderAliasesTab() {
+        return `
+            <div class="aliases-container">
+                <!-- Alias Overview -->
+                <div class="card">
+                    <h3>🔗 Collection Aliases</h3>
+                    <p class="description">
+                        Aliases provide a layer of abstraction for collections, allowing you to switch between 
+                        different collection versions without changing application code. Perfect for A/B testing 
+                        and seamless data updates.
+                    </p>
+                </div>
+
+                <!-- Current Aliases -->
+                <div class="card">
+                    <h3>📋 Current Aliases</h3>
+                    <div class="aliases-list">
+                        ${currentData.aliases && currentData.aliases.length > 0 ? `
+                            <div class="table-container">
+                                <table class="aliases-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Alias Name</th>
+                                            <th>Target Collection</th>
+                                            <th>Created</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${currentData.aliases.map(alias => `
+                                            <tr>
+                                                <td><strong>${alias.alias}</strong></td>
+                                                <td>${alias.collection}</td>
+                                                <td>${alias.createdTime ? new Date(alias.createdTime).toLocaleString() : '-'}</td>
+                                                <td class="action-cell">
+                                                    <button class="btn btn-sm btn-danger" onclick="dropAlias('${alias.alias}')">
+                                                        🗑️ Drop Alias
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                        </tbody>
+                    </table>
+                            </div>
+                        ` : `
+                            <div class="empty-state">
+                                <p>No aliases found for this collection</p>
+                                <p>Create an alias to provide an alternative name for this collection</p>
+                            </div>
+                        `}
+                    </div>
+                </div>
+
+                <!-- Create New Alias -->
+                <div class="card">
+                    <h3>➕ Create New Alias</h3>
+                    <div class="alias-form">
+                        <div class="form-row">
+                            <input type="text" id="new-alias-name" placeholder="Enter alias name" class="form-input">
+                            <button class="btn btn-primary" onclick="createAlias()">Create Alias</button>
+                        </div>
+                        <p class="form-help">
+                            Create an alternative name for this collection. Once created, you can use the alias 
+                            name in all operations instead of the collection name.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Alias Operations -->
+                <div class="card">
+                    <h3>⚙️ Alias Operations</h3>
+                    <div class="alias-operations">
+                        <div class="operation-section">
+                            <h4>Switch Alias Target</h4>
+                            <p>Reassign an existing alias to point to a different collection</p>
+                            <div class="form-row">
+                                <select id="alias-select" class="form-select">
+                                    <option value="">Select existing alias</option>
+                                    ${currentData.aliases ? currentData.aliases.map(alias => 
+                                        `<option value="${alias.alias}">${alias.alias}</option>`
+                                    ).join('') : ''}
+                                </select>
+                                <input type="text" id="new-target-collection" placeholder="New target collection" class="form-input">
+                                <button class="btn btn-warning" onclick="switchAliasTarget()">🔄 Switch Target</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <button class="btn" onclick="refreshData()">🔄 Retry</button>
         `;
     }
 
-    function toggleCollapse (element) {
-        element.classList.toggle('collapsed');
+    function renderPropertiesTab() {
+        return `
+            <div class="properties-container">
+                <!-- Collection Properties -->
+                <div class="card">
+                    <h3>⚙️ Collection Properties</h3>
+                    <div class="properties-form">
+                        <div class="property-section">
+                            <h4>Basic Properties</h4>
+                            <div class="form-grid">
+                                <label class="property-label">
+                                    <span>Collection Name</span>
+                                    <input type="text" id="collection-name" value="${currentData.collectionInfo.name}" class="form-input" readonly>
+                                </label>
+                                
+                                <label class="property-label">
+                                    <span>Description</span>
+                                    <textarea id="collection-description" class="form-textarea" 
+                                              placeholder="Enter collection description...">${currentData.collectionInfo.description || ''}</textarea>
+                                </label>
+                                
+                                <label class="property-label">
+                                    <span>Consistency Level</span>
+                                    <select id="consistency-level" class="form-select">
+                                        <option value="Strong" ${currentData.collectionInfo.consistencyLevel === 'Strong' ? 'selected' : ''}>Strong</option>
+                                        <option value="Bounded" ${currentData.collectionInfo.consistencyLevel === 'Bounded' ? 'selected' : ''}>Bounded</option>
+                                        <option value="Session" ${currentData.collectionInfo.consistencyLevel === 'Session' ? 'selected' : ''}>Session</option>
+                                        <option value="Eventually" ${currentData.collectionInfo.consistencyLevel === 'Eventually' ? 'selected' : ''}>Eventually</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="property-section">
+                            <h4>Advanced Properties</h4>
+                            <div class="form-grid">
+                                <label class="property-label">
+                                    <span>Time To Live (TTL) - Seconds</span>
+                                    <input type="number" id="collection-ttl" placeholder="0 = No expiration" class="form-input" min="0">
+                                </label>
+                                
+                                <label class="property-label">
+                                    <span>Enable Dynamic Fields</span>
+                                    <select id="enable-dynamic-fields" class="form-select">
+                                        <option value="true" ${currentData.collectionInfo.enableDynamicField ? 'selected' : ''}>Enabled</option>
+                                        <option value="false" ${!currentData.collectionInfo.enableDynamicField ? 'selected' : ''}>Disabled</option>
+                                    </select>
+                                </label>
+
+                                <label class="property-label">
+                                    <span>Memory Map (MMap) Enabled</span>
+                                    <select id="mmap-enabled" class="form-select">
+                                        <option value="false">Disabled (Default)</option>
+                                        <option value="true">Enabled</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="property-section">
+                            <h4>Performance Tuning</h4>
+                            <div class="form-grid">
+                                <label class="property-label">
+                                    <span>Segment Size (MB)</span>
+                                    <input type="number" id="segment-size" value="512" class="form-input" min="1" max="2048">
+                                </label>
+                                
+                                <label class="property-label">
+                                    <span>Index File Size (MB)</span>
+                                    <input type="number" id="index-file-size" value="1024" class="form-input" min="1" max="4096">
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="updateCollectionProperties()">💾 Save Properties</button>
+                            <button class="btn btn-secondary" onclick="resetProperties()">🔄 Reset</button>
+                            <button class="btn btn-warning" onclick="renameCollection()">✏️ Rename Collection</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collection Statistics -->
+                <div class="card">
+                    <h3>📊 Collection Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Created Time</span>
+                            <span class="info-value">${currentData.collectionInfo.createdTime ? new Date(parseInt(currentData.collectionInfo.createdTime)).toLocaleString() : 'Unknown'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Load State</span>
+                            <span class="info-value status-${currentData.collectionInfo.loadState?.toLowerCase()}">${currentData.collectionInfo.loadState}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Auto ID</span>
+                            <span class="info-value">${currentData.collectionInfo.autoId ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Total Entities</span>
+                            <span class="info-value">${formatNumber(currentData.collectionStats.rowCount)}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Memory Usage</span>
+                            <span class="info-value">${formatBytes(currentData.collectionStats.memorySize)}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Disk Usage</span>
+                            <span class="info-value">${formatBytes(currentData.collectionStats.diskSize)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
-    function refreshData () {
-        vscode.postMessage({ command: 'refresh' });
+    function renderOperationsTab() {
+        return `
+            <div class="operations-container">
+                <!-- Collection Operations -->
+                <div class="card">
+                    <h3>⚙️ Collection Operations</h3>
+                    <div class="operation-grid">
+                        <div class="operation-item">
+                            <h4>Load Management</h4>
+                            <div class="operation-buttons">
+                                <button class="btn ${currentData.collectionInfo.loadState === 'Loaded' ? 'btn-secondary' : 'btn-primary'}" 
+                                        onclick="loadCollection()" ${currentData.collectionInfo.loadState === 'Loaded' ? 'disabled' : ''}>
+                                    Load Collection
+                                </button>
+                                <button class="btn ${currentData.collectionInfo.loadState !== 'Loaded' ? 'btn-secondary' : 'btn-primary'}" 
+                                        onclick="releaseCollection()" ${currentData.collectionInfo.loadState !== 'Loaded' ? 'disabled' : ''}>
+                                    Release Collection
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="operation-item">
+                            <h4>Maintenance</h4>
+                            <div class="operation-buttons">
+                                <button class="btn btn-warning" onclick="compactCollection()">
+                                    Compact Collection
+                                </button>
+                                <button class="btn btn-info" onclick="flushCollection()">
+                                    Flush Collection
+                                </button>
+                                <button class="btn btn-secondary" onclick="refreshStatistics()">
+                                    Refresh Statistics
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="operation-item">
+                            <h4>Data Operations</h4>
+                            <div class="operation-buttons">
+                                <button class="btn btn-danger" onclick="deleteAllEntities()">
+                                    Delete All Entities
+                                </button>
+                                <button class="btn btn-warning" onclick="truncateCollection()">
+                                    Truncate Collection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bulk Operations -->
+                <div class="card">
+                    <h3>📊 Bulk Operations</h3>
+                    <div class="operation-grid">
+                        <div class="operation-item">
+                            <h4>Import Data</h4>
+                            <input type="file" id="import-file" accept=".json,.csv" class="form-input">
+                            <button class="btn btn-primary" onclick="importData()">Import Data</button>
+                        </div>
+                        
+                        <div class="operation-item">
+                            <h4>Export Data</h4>
+                            <select id="export-format" class="form-select">
+                                <option value="json">JSON</option>
+                                <option value="csv">CSV</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="exportData()">Export Data</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
-    function createIndex () {
-        const fieldName = document.getElementById('field-select').value;
+    function renderSettingsTab() {
+        return `
+            <div class="settings-container">
+                <!-- Collection Properties -->
+                <div class="card">
+                    <h3>⚙️ Collection Properties</h3>
+                    <div class="form-grid">
+                        <label>
+                            <span>Consistency Level</span>
+                            <select id="consistency-level" class="form-select">
+                                <option value="Strong">Strong</option>
+                                <option value="Bounded">Bounded</option>
+                                <option value="Session">Session</option>
+                                <option value="Eventually">Eventually</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Enable Dynamic Field</span>
+                            <input type="checkbox" id="enable-dynamic-field" ${currentData.collectionInfo.enableDynamicField ? 'checked' : ''}>
+                        </label>
+                        <label>
+                            <span>Auto ID</span>
+                            <input type="checkbox" id="auto-id" ${currentData.collectionInfo.autoId ? 'checked' : ''} disabled>
+                        </label>
+                        <button class="btn btn-primary" onclick="updateCollectionProperties()">Update Properties</button>
+                    </div>
+                </div>
+
+                <!-- Advanced Settings -->
+                <div class="card">
+                    <h3>🔧 Advanced Settings</h3>
+                    <div class="form-grid">
+                        <label>
+                            <span>MMap Enabled</span>
+                            <input type="checkbox" id="mmap-enabled">
+                        </label>
+                        <label>
+                            <span>Index File Size (MB)</span>
+                            <input type="number" id="index-file-size" class="form-input" min="1" max="1024" value="1024">
+                        </label>
+                        <label>
+                            <span>Segment Size (MB)</span>
+                            <input type="number" id="segment-size" class="form-input" min="1" max="512" value="512">
+                        </label>
+                        <button class="btn btn-primary" onclick="updateAdvancedSettings()">Update Settings</button>
+                    </div>
+                </div>
+
+                <!-- Description -->
+                <div class="card">
+                    <h3>📝 Description</h3>
+                    <textarea id="collection-description" class="form-textarea" 
+                              placeholder="Collection description...">${currentData.collectionInfo.description || ''}</textarea>
+                    <button class="btn btn-primary" onclick="updateDescription()">Update Description</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function showError(message) {
+        const content = document.getElementById('content');
+        content.innerHTML = `
+            <div class="error-banner">
+                <strong>❌ Error:</strong> ${message}
+                <button class="btn btn-sm" onclick="refreshData()">🔄 Retry</button>
+            </div>
+        `;
+    }
+
+    function showSuccess(message) {
+        const banner = document.createElement('div');
+        banner.className = 'success-banner';
+        banner.innerHTML = `
+            <strong>✅ Success:</strong> ${message}
+            <button class="close-btn" onclick="this.parentElement.remove()">×</button>
+        `;
+        document.body.insertBefore(banner, document.body.firstChild);
+        setTimeout(() => banner.remove(), 5000);
+    }
+
+    // CRUD Operations
+    function deleteCollection() {
+        if (confirm(`🚨 Are you sure you want to delete collection "${currentData.collectionInfo.name}"? This action cannot be undone!`)) {
+            vscode.postMessage({ command: 'deleteCollection' });
+        }
+    }
+
+    function addField() {
+        const name = document.getElementById('new-field-name').value.trim();
+        const type = document.getElementById('new-field-type').value;
+        const dim = document.getElementById('new-field-dim').value;
+        const nullable = document.getElementById('new-field-nullable').checked;
+        const defaultValue = document.getElementById('new-field-default').value;
+
+        if (!name || !type) {
+            alert('Please provide field name and type');
+            return;
+        }
+
+        vscode.postMessage({
+            command: 'addField',
+            fieldName: name,
+            fieldType: type,
+            dimension: type === 'FloatVector' || type === 'BinaryVector' ? parseInt(dim) : undefined,
+            nullable: nullable,
+            defaultValue: defaultValue
+        });
+    }
+
+    function createIndex() {
+        const fieldName = document.getElementById('index-field-select').value;
         const indexType = document.getElementById('index-type-select').value;
+        const metricType = document.getElementById('index-metric-select').value;
 
-        if (!fieldName || !indexType) {
-            alert('Please select both field and index type');
+        if (!fieldName || !indexType || !metricType) {
+            alert('Please select field, index type, and metric type');
             return;
         }
 
-        const params = getDefaultIndexParams(indexType);
+        const params = getIndexParams(indexType);
         vscode.postMessage({
             command: 'createIndex',
             fieldName: fieldName,
             indexType: indexType,
+            metricType: metricType,
             params: params
         });
     }
 
-    function createIndexForField (fieldName) {
-        // Show a simple prompt for index type selection
-        const indexTypes = ['FLAT', 'IVF_FLAT', 'IVF_SQ8', 'IVF_PQ', 'HNSW', 'ANNOY'];
-        const selectedType = prompt(
-            `Create index for field "${fieldName}".\n\nSelect index type:\n` +
-            indexTypes.map((type, i) => `${i + 1}. ${type}${type === 'HNSW' ? ' (Recommended)' : ''}`).join('\n') +
-            '\n\nEnter number (1-6):'
-        );
-
-        if (!selectedType || isNaN(selectedType) || selectedType < 1 || selectedType > 6) {
-            return;
-        }
-
-        const indexType = indexTypes[parseInt(selectedType) - 1];
-        const params = getDefaultIndexParams(indexType);
-
-        vscode.postMessage({
-            command: 'createIndex',
-            fieldName: fieldName,
-            indexType: indexType,
-            params: params
-        });
-    }
-
-    function dropIndex (indexName) {
-        if (confirm(`Are you sure you want to drop the index "${indexName}"?`)) {
+    function dropIndex(indexName) {
+        if (confirm(`Drop index "${indexName}"?`)) {
             vscode.postMessage({
                 command: 'dropIndex',
                 indexName: indexName
@@ -288,24 +793,21 @@
         }
     }
 
-    function createPartition () {
-        const partitionName = document.getElementById('partition-name-input').value.trim();
-
-        if (!partitionName) {
-            alert('Please enter a partition name');
+    function createPartition() {
+        const name = document.getElementById('new-partition-name').value.trim();
+        if (!name) {
+            alert('Please provide partition name');
             return;
         }
 
         vscode.postMessage({
             command: 'createPartition',
-            partitionName: partitionName
+            partitionName: name
         });
-
-        document.getElementById('partition-name-input').value = '';
     }
 
-    function dropPartition (partitionName) {
-        if (confirm(`Are you sure you want to drop the partition "${partitionName}"?`)) {
+    function dropPartition(partitionName) {
+        if (confirm(`Drop partition "${partitionName}"?`)) {
             vscode.postMessage({
                 command: 'dropPartition',
                 partitionName: partitionName
@@ -313,71 +815,114 @@
         }
     }
 
-    function loadCollection () {
-        if (confirm('Loading the collection will make it available for queries and operations. Continue?')) {
-            vscode.postMessage({
-                command: 'loadCollection'
-            });
+    function loadPartition(partitionName) {
+        vscode.postMessage({
+            command: 'loadPartition',
+            partitionName: partitionName
+        });
+    }
+
+    function releasePartition(partitionName) {
+        vscode.postMessage({
+            command: 'releasePartition',
+            partitionName: partitionName
+        });
+    }
+
+    function loadCollection() {
+        if (confirm(`Load collection "${currentData.collectionInfo.name}" into memory?`)) {
+            vscode.postMessage({ command: 'loadCollection' });
         }
     }
 
-    function releaseCollection () {
-        if (confirm('Releasing the collection will free up memory resources but make it unavailable for queries. Continue?')) {
-            vscode.postMessage({
-                command: 'releaseCollection'
-            });
+    function releaseCollection() {
+        if (confirm(`Release collection "${currentData.collectionInfo.name}" from memory?`)) {
+            vscode.postMessage({ command: 'releaseCollection' });
         }
     }
 
+    function compactCollection() {
+        if (confirm(`Compact collection "${currentData.collectionInfo.name}" to optimize storage?`)) {
+            vscode.postMessage({ command: 'compactCollection' });
+        }
+    }
 
+    function flushCollection() {
+        vscode.postMessage({ command: 'flushCollection' });
+    }
 
-    function getDataTypeName (dataType) {
-        const typeMap = {
-            1: 'Bool',
-            2: 'Int8',
-            3: 'Int16',
-            4: 'Int32',
-            5: 'Int64',
-            10: 'Float',
-            11: 'Double',
-            20: 'String',
-            21: 'VarChar',
-            100: 'BinaryVector',
-            101: 'FloatVector'
+    function deleteAllEntities() {
+        if (confirm(`🚨 Delete all entities from "${currentData.collectionInfo.name}"? This cannot be undone!`)) {
+            vscode.postMessage({ command: 'deleteAllEntities' });
+        }
+    }
+
+    function truncateCollection() {
+        if (confirm(`🚨 Truncate collection "${currentData.collectionInfo.name}"? This will remove all data but keep the schema!`)) {
+            vscode.postMessage({ command: 'truncateCollection' });
+        }
+    }
+
+    function updateCollectionProperties() {
+        const consistencyLevel = document.getElementById('consistency-level').value;
+        const enableDynamicField = document.getElementById('enable-dynamic-field').checked;
+
+        vscode.postMessage({
+            command: 'updateCollectionProperties',
+            consistencyLevel: consistencyLevel,
+            enableDynamicField: enableDynamicField
+        });
+    }
+
+    function updateDescription() {
+        const description = document.getElementById('collection-description').value.trim();
+        vscode.postMessage({
+            command: 'updateDescription',
+            description: description
+        });
+    }
+
+    function refreshData() {
+        vscode.postMessage({ command: 'refresh' });
+    }
+
+    function refreshStatistics() {
+        vscode.postMessage({ command: 'refreshStatistics' });
+    }
+
+    function getIndexParams(indexType) {
+        const params = {
+            FLAT: {},
+            IVF_FLAT: { nlist: 1024 },
+            IVF_SQ8: { nlist: 1024 },
+            IVF_PQ: { nlist: 1024, m: 16, nbits: 8 },
+            HNSW: { M: 16, efConstruction: 200 },
+            ANNOY: { n_trees: 8 }
         };
-        return typeMap[dataType] || `Unknown (${dataType})`;
+        return params[indexType] || {};
     }
 
-    function formatNumber (num) {
+    // Utility functions
+    function formatNumber(num) {
         return new Intl.NumberFormat().format(parseInt(num) || 0);
     }
 
-    function formatBytes (bytes) {
+    function formatBytes(bytes) {
         const size = parseInt(bytes) || 0;
-        if (size === 0) { return '0 B'; }
+        if (size === 0) return '0 B';
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(size) / Math.log(k));
         return parseFloat((size / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    function formatIndexParams (params) {
-        if (!params || typeof params !== 'object') { return '-'; }
-        return Object.entries(params)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(', ');
-    }
-
-    function getDefaultIndexParams (indexType) {
-        const defaultParams = {
-            'FLAT': {},
-            'IVF_FLAT': { nlist: 1024 },
-            'IVF_SQ8': { nlist: 1024 },
-            'IVF_PQ': { nlist: 1024, m: 16, nbits: 8 },
-            'HNSW': { M: 16, efConstruction: 200 },
-            'ANNOY': { n_trees: 8 }
+    function getDataTypeName(dataType) {
+        const typeMap = {
+            1: 'Bool', 2: 'Int8', 3: 'Int16', 4: 'Int32', 5: 'Int64',
+            10: 'Float', 11: 'Double', 20: 'String', 21: 'VarChar',
+            100: 'BinaryVector', 101: 'FloatVector'
         };
-        return defaultParams[indexType] || {};
+        return typeMap[dataType] || dataType;
     }
 
     // Initialize
