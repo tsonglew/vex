@@ -703,6 +703,14 @@ async function setupCollectionManagementWebview(
                     vscode.window.showInformationMessage( `Collection "${collectionName}" released successfully` );
                     await loadCollectionData( panel, strategy, collectionName );
                     break;
+                case 'deleteCollection':
+                    await strategy.deleteCollection( collectionName );
+                    vscode.window.showInformationMessage( `Collection "${collectionName}" deleted successfully` );
+                    // Refresh the tree provider to reflect the deletion
+                    treeProvider.refresh();
+                    // Close the webview panel since the collection no longer exists
+                    panel.dispose();
+                    break;
             }
         } catch ( error ) {
             vscode.window.showErrorMessage( `Operation failed: ${error}` );
