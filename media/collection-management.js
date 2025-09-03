@@ -27,18 +27,20 @@
     document.addEventListener('click', event => {
         if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
             const button = event.target.tagName === 'BUTTON' ? event.target : event.target.closest('button');
-            logButtonClick(button);
+            // Log the click without interfering with normal behavior
+            setTimeout(() => logButtonClick(button), 0);
         }
-    });
+        // Don't prevent default behavior or stop propagation
+    }, true); // Use capture phase to ensure we log before other handlers
 
     // Log button click details
-    function logButtonClick(button) {
+    function logButtonClick (button) {
         const timestamp = new Date().toISOString();
         const buttonText = button.textContent?.trim() || 'Unknown';
         const buttonClasses = button.className || 'no-classes';
         const onclickFunction = button.getAttribute('onclick') || 'no-onclick';
         const buttonId = button.id || 'no-id';
-        
+
         console.log(`[BUTTON CLICK] ${timestamp}`, {
             text: buttonText,
             id: buttonId,
@@ -46,7 +48,7 @@
             onclick: onclickFunction,
             element: button
         });
-        
+
         // Also send to VS Code extension if needed for logging
         try {
             vscode.postMessage({
