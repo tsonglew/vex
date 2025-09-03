@@ -779,7 +779,7 @@
         setTimeout(() => banner.remove(), 5000);
     }
 
-    function showConfirmDialog(title, message, onConfirm, confirmText = 'Confirm', isDestructive = false) {
+    function showConfirmDialog (title, message, onConfirm, confirmText = 'Confirm', isDestructive = false) {
         // Create modal overlay
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
@@ -811,7 +811,7 @@
         `;
 
         const confirmBtnClass = isDestructive ? 'btn-danger' : 'btn-primary';
-        
+
         modal.innerHTML = `
             <div style="margin-bottom: 16px;">
                 <h3 style="margin: 0 0 12px 0; color: ${isDestructive ? 'var(--vscode-errorForeground)' : 'var(--vscode-editor-foreground)'};">${title}</h3>
@@ -857,7 +857,7 @@
         document.addEventListener('keydown', handleEscape);
     }
 
-    function showInputDialog(title, message, defaultValue, onConfirm) {
+    function showInputDialog (title, message, defaultValue, onConfirm) {
         // Create modal overlay
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
@@ -932,7 +932,7 @@
 
         cancelBtn.addEventListener('click', closeModal);
         confirmBtn.addEventListener('click', handleConfirm);
-        
+
         // Handle Enter key on input
         inputField.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -964,7 +964,7 @@
         document.addEventListener('keydown', handleEscape);
     }
 
-    function showNotification(message, type = 'info') {
+    function showNotification (message, type = 'info') {
         const notification = document.createElement('div');
         notification.className = `notification-${type}`;
         notification.style.cssText = `
@@ -981,7 +981,7 @@
             font-size: 14px;
             animation: slideInFromRight 0.3s ease-out;
         `;
-        
+
         notification.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span>${message}</span>
@@ -998,7 +998,7 @@
         `;
 
         document.body.appendChild(notification);
-        
+
         // Auto-remove after 3 seconds
         setTimeout(() => {
             if (document.body.contains(notification)) {
@@ -1009,7 +1009,6 @@
 
     // CRUD Operations
     function deleteCollection () {
-        console.log('call deleteCollection');
         showConfirmDialog(
             `Delete Collection`,
             `Are you sure you want to delete collection "${currentData.collectionInfo.name}"? This action cannot be undone!`,
