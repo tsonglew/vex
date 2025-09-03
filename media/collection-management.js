@@ -25,8 +25,10 @@
 
     // Universal button click logger using event delegation
     document.addEventListener('click', event => {
+        console.log('Click detected on:', event.target);
         if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
             const button = event.target.tagName === 'BUTTON' ? event.target : event.target.closest('button');
+            console.log('Button click detected on:', button);
             // Log the click without interfering with normal behavior
             setTimeout(() => logButtonClick(button), 0);
         }
@@ -779,10 +781,24 @@
         setTimeout(() => banner.remove(), 5000);
     }
 
-    // CRUD Operations
+        // CRUD Operations
     function deleteCollection () {
+        console.log('call deleteCollection');
+        console.error('DELETE COLLECTION FUNCTION CALLED!'); // More visible logging
+        alert('Delete collection function was called!'); // Visual confirmation
+        
+        // Add null checks
+        if (!currentData || !currentData.collectionInfo) {
+            console.error('currentData or collectionInfo is null');
+            alert('Error: Collection data not available');
+            return;
+        }
+        
         if (confirm(`🚨 Are you sure you want to delete collection "${currentData.collectionInfo.name}"? This action cannot be undone!`)) {
+            console.log('User confirmed deletion, sending message to VS Code');
             vscode.postMessage({ command: 'deleteCollection' });
+        } else {
+            console.log('User cancelled deletion');
         }
     }
 
@@ -1137,6 +1153,37 @@
         };
         return typeMap[dataType] || dataType;
     }
+
+    // Make all onclick functions globally accessible
+    window.deleteCollection = deleteCollection;
+    window.refreshData = refreshData;
+    window.switchTab = switchTab;
+    window.loadCollection = loadCollection;
+    window.releaseCollection = releaseCollection;
+    window.compactCollection = compactCollection;
+    window.flushCollection = flushCollection;
+    window.createIndexForField = createIndexForField;
+    window.dropIndex = dropIndex;
+    window.createAdvancedIndex = createAdvancedIndex;
+    window.rebuildAllIndexes = rebuildAllIndexes;
+    window.dropAllIndexes = dropAllIndexes;
+    window.analyzeIndexPerformance = analyzeIndexPerformance;
+    window.dropPartition = dropPartition;
+    window.createPartition = createPartition;
+    window.showPartitionStats = showPartitionStats;
+    window.compactPartitions = compactPartitions;
+    window.dropAlias = dropAlias;
+    window.createAlias = createAlias;
+    window.switchAliasTarget = switchAliasTarget;
+    window.updateCollectionProperties = updateCollectionProperties;
+    window.resetProperties = resetProperties;
+    window.renameCollection = renameCollection;
+    window.deleteAllEntities = deleteAllEntities;
+    window.truncateCollection = truncateCollection;
+    window.refreshStatistics = refreshStatistics;
+    window.importData = importData;
+    window.exportData = exportData;
+    window.updateDescription = updateDescription;
 
     // Initialize
     refreshData();
