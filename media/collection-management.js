@@ -23,7 +23,49 @@
         }
     });
 
-    function renderUI() {
+    // Universal button click logger using event delegation
+    document.addEventListener('click', event => {
+        if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+            const button = event.target.tagName === 'BUTTON' ? event.target : event.target.closest('button');
+            logButtonClick(button);
+        }
+    });
+
+    // Log button click details
+    function logButtonClick(button) {
+        const timestamp = new Date().toISOString();
+        const buttonText = button.textContent?.trim() || 'Unknown';
+        const buttonClasses = button.className || 'no-classes';
+        const onclickFunction = button.getAttribute('onclick') || 'no-onclick';
+        const buttonId = button.id || 'no-id';
+        
+        console.log(`[BUTTON CLICK] ${timestamp}`, {
+            text: buttonText,
+            id: buttonId,
+            classes: buttonClasses,
+            onclick: onclickFunction,
+            element: button
+        });
+        
+        // Also send to VS Code extension if needed for logging
+        try {
+            vscode.postMessage({
+                command: 'buttonClick',
+                data: {
+                    timestamp: timestamp,
+                    buttonText: buttonText,
+                    buttonId: buttonId,
+                    buttonClasses: buttonClasses,
+                    onclickFunction: onclickFunction
+                }
+            });
+        } catch (error) {
+            // Fallback if vscode is not available
+            console.warn('Could not send button click to VS Code:', error);
+        }
+    }
+
+    function renderUI () {
         if (!currentData) { return; }
 
         const content = document.getElementById('content');
@@ -52,12 +94,12 @@
         `;
     }
 
-    function switchTab(tab) {
+    function switchTab (tab) {
         activeTab = tab;
         renderUI();
     }
 
-    function renderTabContent() {
+    function renderTabContent () {
         switch (activeTab) {
             case 'overview':
                 return renderOverviewTab();
@@ -76,7 +118,7 @@
         }
     }
 
-    function renderOverviewTab() {
+    function renderOverviewTab () {
         return `
             <div class="overview-grid">
                 <!-- Collection Status -->
@@ -151,7 +193,7 @@
         `;
     }
 
-    function renderSchemaTab() {
+    function renderSchemaTab () {
         return `
             <div class="schema-container">
                 <!-- Collection Schema Overview -->
@@ -197,10 +239,10 @@
                         </thead>
                         <tbody>
                                 ${currentData.collectionInfo.fields.map(field => {
-                                    const fieldIndex = currentData.indexes.find(index =>
-                                        (index.field_name || index.fieldName) === field.name
-                                    );
-                                    return `
+            const fieldIndex = currentData.indexes.find(index =>
+                (index.field_name || index.fieldName) === field.name
+            );
+            return `
                                 <tr>
                                     <td><strong>${field.name}</strong></td>
                                             <td>
@@ -228,7 +270,7 @@
                                             </td>
                                 </tr>
                                     `;
-                                }).join('')}
+        }).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -244,8 +286,8 @@
                                 <select id="index-field-select" class="form-select">
                                     <option value="">Select vector field</option>
                                 ${currentData.collectionInfo.fields
-                                        .filter(f => (f.data_type === 101 || f.data_type === 100) && !currentData.indexes.find(idx => (idx.field_name || idx.fieldName) === f.name))
-                                        .map(f => `<option value="${f.name}">${f.name} (${f.type_params?.dim || f.dim}D ${getDataTypeName(f.data_type)})</option>`)
+                .filter(f => (f.data_type === 101 || f.data_type === 100) && !currentData.indexes.find(idx => (idx.field_name || idx.fieldName) === f.name))
+                .map(f => `<option value="${f.name}">${f.name} (${f.type_params?.dim || f.dim}D ${getDataTypeName(f.data_type)})</option>`)
                 .join('')}
                             </select>
                                 <select id="index-type-select" class="form-select">
@@ -284,7 +326,7 @@
         `;
     }
 
-    function renderPartitionsTab() {
+    function renderPartitionsTab () {
         return `
             <div class="partitions-container">
                 <!-- Partition Overview -->
@@ -373,7 +415,7 @@
         `;
     }
 
-    function renderAliasesTab() {
+    function renderAliasesTab () {
         return `
             <div class="aliases-container">
                 <!-- Alias Overview -->
@@ -451,9 +493,9 @@
                             <div class="form-row">
                                 <select id="alias-select" class="form-select">
                                     <option value="">Select existing alias</option>
-                                    ${currentData.aliases ? currentData.aliases.map(alias => 
-                                        `<option value="${alias.alias}">${alias.alias}</option>`
-                                    ).join('') : ''}
+                                    ${currentData.aliases ? currentData.aliases.map(alias =>
+            `<option value="${alias.alias}">${alias.alias}</option>`
+        ).join('') : ''}
                                 </select>
                                 <input type="text" id="new-target-collection" placeholder="New target collection" class="form-input">
                                 <button class="btn btn-warning" onclick="switchAliasTarget()">🔄 Switch Target</button>
@@ -465,7 +507,7 @@
         `;
     }
 
-    function renderPropertiesTab() {
+    function renderPropertiesTab () {
         return `
             <div class="properties-container">
                 <!-- Collection Properties -->
@@ -581,7 +623,7 @@
         `;
     }
 
-    function renderOperationsTab() {
+    function renderOperationsTab () {
         return `
             <div class="operations-container">
                 <!-- Collection Operations -->
@@ -655,7 +697,7 @@
         `;
     }
 
-    function renderSettingsTab() {
+    function renderSettingsTab () {
         return `
             <div class="settings-container">
                 <!-- Collection Properties -->
@@ -714,7 +756,7 @@
         `;
     }
 
-    function showError(message) {
+    function showError (message) {
         const content = document.getElementById('content');
         content.innerHTML = `
             <div class="error-banner">
@@ -724,7 +766,7 @@
         `;
     }
 
-    function showSuccess(message) {
+    function showSuccess (message) {
         const banner = document.createElement('div');
         banner.className = 'success-banner';
         banner.innerHTML = `
@@ -736,13 +778,13 @@
     }
 
     // CRUD Operations
-    function deleteCollection() {
+    function deleteCollection () {
         if (confirm(`🚨 Are you sure you want to delete collection "${currentData.collectionInfo.name}"? This action cannot be undone!`)) {
             vscode.postMessage({ command: 'deleteCollection' });
         }
     }
 
-    function addField() {
+    function addField () {
         const name = document.getElementById('new-field-name').value.trim();
         const type = document.getElementById('new-field-type').value;
         const dim = document.getElementById('new-field-dim').value;
@@ -764,7 +806,7 @@
         });
     }
 
-    function createIndex() {
+    function createIndex () {
         const fieldName = document.getElementById('index-field-select').value;
         const indexType = document.getElementById('index-type-select').value;
         const metricType = document.getElementById('index-metric-select').value;
@@ -784,7 +826,7 @@
         });
     }
 
-    function dropIndex(indexName) {
+    function dropIndex (indexName) {
         if (confirm(`Drop index "${indexName}"?`)) {
             vscode.postMessage({
                 command: 'dropIndex',
@@ -793,7 +835,7 @@
         }
     }
 
-    function createPartition() {
+    function createPartition () {
         const name = document.getElementById('new-partition-name').value.trim();
         if (!name) {
             alert('Please provide partition name');
@@ -806,7 +848,7 @@
         });
     }
 
-    function dropPartition(partitionName) {
+    function dropPartition (partitionName) {
         if (confirm(`Drop partition "${partitionName}"?`)) {
             vscode.postMessage({
                 command: 'dropPartition',
@@ -815,55 +857,55 @@
         }
     }
 
-    function loadPartition(partitionName) {
+    function loadPartition (partitionName) {
         vscode.postMessage({
             command: 'loadPartition',
             partitionName: partitionName
         });
     }
 
-    function releasePartition(partitionName) {
+    function releasePartition (partitionName) {
         vscode.postMessage({
             command: 'releasePartition',
             partitionName: partitionName
         });
     }
 
-    function loadCollection() {
+    function loadCollection () {
         if (confirm(`Load collection "${currentData.collectionInfo.name}" into memory?`)) {
             vscode.postMessage({ command: 'loadCollection' });
         }
     }
 
-    function releaseCollection() {
+    function releaseCollection () {
         if (confirm(`Release collection "${currentData.collectionInfo.name}" from memory?`)) {
             vscode.postMessage({ command: 'releaseCollection' });
         }
     }
 
-    function compactCollection() {
+    function compactCollection () {
         if (confirm(`Compact collection "${currentData.collectionInfo.name}" to optimize storage?`)) {
             vscode.postMessage({ command: 'compactCollection' });
         }
     }
 
-    function flushCollection() {
+    function flushCollection () {
         vscode.postMessage({ command: 'flushCollection' });
     }
 
-    function deleteAllEntities() {
+    function deleteAllEntities () {
         if (confirm(`🚨 Delete all entities from "${currentData.collectionInfo.name}"? This cannot be undone!`)) {
             vscode.postMessage({ command: 'deleteAllEntities' });
         }
     }
 
-    function truncateCollection() {
+    function truncateCollection () {
         if (confirm(`🚨 Truncate collection "${currentData.collectionInfo.name}"? This will remove all data but keep the schema!`)) {
             vscode.postMessage({ command: 'truncateCollection' });
         }
     }
 
-    function updateCollectionProperties() {
+    function updateCollectionProperties () {
         const consistencyLevel = document.getElementById('consistency-level').value;
         const enableDynamicField = document.getElementById('enable-dynamic-field').checked;
 
@@ -874,7 +916,7 @@
         });
     }
 
-    function updateDescription() {
+    function updateDescription () {
         const description = document.getElementById('collection-description').value.trim();
         vscode.postMessage({
             command: 'updateDescription',
@@ -882,15 +924,15 @@
         });
     }
 
-    function refreshData() {
+    function refreshData () {
         vscode.postMessage({ command: 'refresh' });
     }
 
-    function refreshStatistics() {
+    function refreshStatistics () {
         vscode.postMessage({ command: 'refreshStatistics' });
     }
 
-    function getIndexParams(indexType) {
+    function getIndexParams (indexType) {
         const defaultParams = {
             'FLAT': {},
             'IVF_FLAT': { nlist: 1024 },
@@ -904,7 +946,7 @@
     }
 
     // New functions for enhanced features
-    function createAdvancedIndex() {
+    function createAdvancedIndex () {
         const fieldName = document.getElementById('index-field-select').value;
         const indexType = document.getElementById('index-type-select').value;
         const metricType = document.getElementById('index-metric-select').value;
@@ -924,34 +966,34 @@
         });
     }
 
-    function rebuildAllIndexes() {
+    function rebuildAllIndexes () {
         if (confirm('Rebuild all indexes? This may take some time and will temporarily affect query performance.')) {
             vscode.postMessage({ command: 'rebuildAllIndexes' });
         }
     }
 
-    function dropAllIndexes() {
+    function dropAllIndexes () {
         if (confirm('🚨 Drop ALL indexes? This will significantly impact query performance until new indexes are created!')) {
             vscode.postMessage({ command: 'dropAllIndexes' });
         }
     }
 
-    function analyzeIndexPerformance() {
+    function analyzeIndexPerformance () {
         vscode.postMessage({ command: 'analyzeIndexPerformance' });
     }
 
-    function showPartitionStats() {
+    function showPartitionStats () {
         vscode.postMessage({ command: 'showPartitionStats' });
     }
 
-    function compactPartitions() {
+    function compactPartitions () {
         if (confirm('Compact all partitions? This will optimize storage and may take some time.')) {
             vscode.postMessage({ command: 'compactPartitions' });
         }
     }
 
     // Alias management functions
-    function createAlias() {
+    function createAlias () {
         const aliasName = document.getElementById('new-alias-name').value.trim();
         if (!aliasName) {
             alert('Please enter an alias name');
@@ -967,7 +1009,7 @@
         document.getElementById('new-alias-name').value = '';
     }
 
-    function dropAlias(aliasName) {
+    function dropAlias (aliasName) {
         if (confirm(`Drop alias "${aliasName}"?`)) {
             vscode.postMessage({
                 command: 'dropAlias',
@@ -976,7 +1018,7 @@
         }
     }
 
-    function switchAliasTarget() {
+    function switchAliasTarget () {
         const aliasName = document.getElementById('alias-select').value;
         const newTarget = document.getElementById('new-target-collection').value.trim();
 
@@ -995,7 +1037,7 @@
     }
 
     // Properties management functions
-    function updateCollectionProperties() {
+    function updateCollectionProperties () {
         const description = document.getElementById('collection-description').value.trim();
         const consistencyLevel = document.getElementById('consistency-level').value;
         const ttl = document.getElementById('collection-ttl').value;
@@ -1018,13 +1060,13 @@
         });
     }
 
-    function resetProperties() {
+    function resetProperties () {
         if (confirm('Reset all properties to their original values?')) {
             renderUI(); // Re-render to reset form values
         }
     }
 
-    function renameCollection() {
+    function renameCollection () {
         const newName = prompt(`Enter new name for collection "${currentData.collectionInfo.name}":`, currentData.collectionInfo.name);
         if (newName && newName !== currentData.collectionInfo.name) {
             if (confirm(`Rename collection from "${currentData.collectionInfo.name}" to "${newName}"?`)) {
@@ -1037,7 +1079,7 @@
     }
 
     // Enhanced operation functions
-    function importData() {
+    function importData () {
         const fileInput = document.getElementById('import-file');
         if (!fileInput.files.length) {
             alert('Please select a file to import');
@@ -1046,8 +1088,8 @@
 
         const file = fileInput.files[0];
         const reader = new FileReader();
-        
-        reader.onload = function(e) {
+
+        reader.onload = function (e) {
             try {
                 const data = JSON.parse(e.target.result);
                 vscode.postMessage({
@@ -1059,11 +1101,11 @@
                 alert('Invalid JSON file format');
             }
         };
-        
+
         reader.readAsText(file);
     }
 
-    function exportData() {
+    function exportData () {
         const format = document.getElementById('export-format').value;
         vscode.postMessage({
             command: 'exportData',
@@ -1072,11 +1114,11 @@
     }
 
     // Utility functions
-    function formatNumber(num) {
+    function formatNumber (num) {
         return new Intl.NumberFormat().format(parseInt(num) || 0);
     }
 
-    function formatBytes(bytes) {
+    function formatBytes (bytes) {
         const size = parseInt(bytes) || 0;
         if (size === 0) { return '0 B'; }
         const k = 1024;
@@ -1085,7 +1127,7 @@
         return parseFloat((size / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    function getDataTypeName(dataType) {
+    function getDataTypeName (dataType) {
         const typeMap = {
             1: 'Bool', 2: 'Int8', 3: 'Int16', 4: 'Int32', 5: 'Int64',
             10: 'Float', 11: 'Double', 20: 'String', 21: 'VarChar',
