@@ -25,10 +25,8 @@
 
     // Universal button click logger using event delegation
     document.addEventListener('click', event => {
-        console.log('Click detected on:', event.target);
         if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
             const button = event.target.tagName === 'BUTTON' ? event.target : event.target.closest('button');
-            console.log('Button click detected on:', button);
             // Log the click without interfering with normal behavior
             setTimeout(() => logButtonClick(button), 0);
         }
@@ -781,24 +779,11 @@
         setTimeout(() => banner.remove(), 5000);
     }
 
-        // CRUD Operations
+    // CRUD Operations
     function deleteCollection () {
         console.log('call deleteCollection');
-        console.error('DELETE COLLECTION FUNCTION CALLED!'); // More visible logging
-        alert('Delete collection function was called!'); // Visual confirmation
-        
-        // Add null checks
-        if (!currentData || !currentData.collectionInfo) {
-            console.error('currentData or collectionInfo is null');
-            alert('Error: Collection data not available');
-            return;
-        }
-        
         if (confirm(`🚨 Are you sure you want to delete collection "${currentData.collectionInfo.name}"? This action cannot be undone!`)) {
-            console.log('User confirmed deletion, sending message to VS Code');
             vscode.postMessage({ command: 'deleteCollection' });
-        } else {
-            console.log('User cancelled deletion');
         }
     }
 
