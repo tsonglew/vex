@@ -779,12 +779,246 @@
         setTimeout(() => banner.remove(), 5000);
     }
 
+    function showConfirmDialog(title, message, onConfirm, confirmText = 'Confirm', isDestructive = false) {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        `;
+
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.className = 'modal-dialog';
+        modal.style.cssText = `
+            background: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 20px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        `;
+
+        const confirmBtnClass = isDestructive ? 'btn-danger' : 'btn-primary';
+        
+        modal.innerHTML = `
+            <div style="margin-bottom: 16px;">
+                <h3 style="margin: 0 0 12px 0; color: ${isDestructive ? 'var(--vscode-errorForeground)' : 'var(--vscode-editor-foreground)'};">${title}</h3>
+                <p style="margin: 0; opacity: 0.9;">${message}</p>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="cancel-btn" class="btn btn-secondary" style="padding: 8px 16px;">Cancel</button>
+                <button id="confirm-btn" class="btn ${confirmBtnClass}" style="padding: 8px 16px;">${confirmText}</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Handle button clicks
+        const cancelBtn = modal.querySelector('#cancel-btn');
+        const confirmBtn = modal.querySelector('#confirm-btn');
+
+        const closeModal = () => {
+            document.body.removeChild(overlay);
+        };
+
+        cancelBtn.addEventListener('click', closeModal);
+        confirmBtn.addEventListener('click', () => {
+            closeModal();
+            onConfirm();
+        });
+
+        // Close on overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeModal();
+            }
+        });
+
+        // Close on escape key
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', handleEscape);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+    }
+
+    function showInputDialog(title, message, defaultValue, onConfirm) {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        `;
+
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.className = 'modal-dialog';
+        modal.style.cssText = `
+            background: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 20px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        `;
+
+        modal.innerHTML = `
+            <div style="margin-bottom: 16px;">
+                <h3 style="margin: 0 0 12px 0; color: var(--vscode-editor-foreground);">${title}</h3>
+                <p style="margin: 0 0 12px 0; opacity: 0.9;">${message}</p>
+                <input type="text" id="input-field" value="${defaultValue || ''}" style="
+                    width: 100%;
+                    padding: 8px 12px;
+                    background: var(--vscode-input-background);
+                    color: var(--vscode-input-foreground);
+                    border: 1px solid var(--vscode-input-border);
+                    border-radius: 3px;
+                    font-family: var(--vscode-font-family);
+                    font-size: var(--vscode-font-size);
+                    box-sizing: border-box;
+                ">
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="cancel-btn" class="btn btn-secondary" style="padding: 8px 16px;">Cancel</button>
+                <button id="confirm-btn" class="btn btn-primary" style="padding: 8px 16px;">OK</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Handle input field and buttons
+        const inputField = modal.querySelector('#input-field');
+        const cancelBtn = modal.querySelector('#cancel-btn');
+        const confirmBtn = modal.querySelector('#confirm-btn');
+
+        const closeModal = () => {
+            document.body.removeChild(overlay);
+        };
+
+        const handleConfirm = () => {
+            const value = inputField.value.trim();
+            if (value) {
+                closeModal();
+                onConfirm(value);
+            }
+        };
+
+        cancelBtn.addEventListener('click', closeModal);
+        confirmBtn.addEventListener('click', handleConfirm);
+        
+        // Handle Enter key on input
+        inputField.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleConfirm();
+            }
+        });
+
+        // Focus input field and select all text
+        setTimeout(() => {
+            inputField.focus();
+            inputField.select();
+        }, 100);
+
+        // Close on overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeModal();
+            }
+        });
+
+        // Close on escape key
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', handleEscape);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+    }
+
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification-${type}`;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 16px;
+            background: ${type === 'error' ? 'var(--vscode-errorForeground)' : 'var(--vscode-button-background)'};
+            color: ${type === 'error' ? 'var(--vscode-errorBackground)' : 'var(--vscode-button-foreground)'};
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            z-index: 10001;
+            max-width: 300px;
+            font-size: 14px;
+            animation: slideInFromRight 0.3s ease-out;
+        `;
+        
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" style="
+                    background: none;
+                    border: none;
+                    color: inherit;
+                    cursor: pointer;
+                    padding: 0;
+                    margin-left: 8px;
+                    font-size: 16px;
+                ">&times;</button>
+            </div>
+        `;
+
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                notification.remove();
+            }
+        }, 3000);
+    }
+
     // CRUD Operations
     function deleteCollection () {
         console.log('call deleteCollection');
-        if (confirm(`🚨 Are you sure you want to delete collection "${currentData.collectionInfo.name}"? This action cannot be undone!`)) {
-            vscode.postMessage({ command: 'deleteCollection' });
-        }
+        showConfirmDialog(
+            `Delete Collection`,
+            `Are you sure you want to delete collection "${currentData.collectionInfo.name}"? This action cannot be undone!`,
+            () => {
+                vscode.postMessage({ command: 'deleteCollection' });
+            },
+            'Delete',
+            true
+        );
     }
 
     function addField () {
@@ -795,7 +1029,7 @@
         const defaultValue = document.getElementById('new-field-default').value;
 
         if (!name || !type) {
-            alert('Please provide field name and type');
+            showNotification('Please provide field name and type', 'error');
             return;
         }
 
@@ -815,7 +1049,7 @@
         const metricType = document.getElementById('index-metric-select').value;
 
         if (!fieldName || !indexType || !metricType) {
-            alert('Please select field, index type, and metric type');
+            showNotification('Please select field, index type, and metric type', 'error');
             return;
         }
 
@@ -830,18 +1064,24 @@
     }
 
     function dropIndex (indexName) {
-        if (confirm(`Drop index "${indexName}"?`)) {
-            vscode.postMessage({
-                command: 'dropIndex',
-                indexName: indexName
-            });
-        }
+        showConfirmDialog(
+            'Drop Index',
+            `Are you sure you want to drop index "${indexName}"?`,
+            () => {
+                vscode.postMessage({
+                    command: 'dropIndex',
+                    indexName: indexName
+                });
+            },
+            'Drop',
+            true
+        );
     }
 
     function createPartition () {
         const name = document.getElementById('new-partition-name').value.trim();
         if (!name) {
-            alert('Please provide partition name');
+            showNotification('Please provide partition name', 'error');
             return;
         }
 
@@ -852,12 +1092,18 @@
     }
 
     function dropPartition (partitionName) {
-        if (confirm(`Drop partition "${partitionName}"?`)) {
-            vscode.postMessage({
-                command: 'dropPartition',
-                partitionName: partitionName
-            });
-        }
+        showConfirmDialog(
+            'Drop Partition',
+            `Are you sure you want to drop partition "${partitionName}"?`,
+            () => {
+                vscode.postMessage({
+                    command: 'dropPartition',
+                    partitionName: partitionName
+                });
+            },
+            'Drop',
+            true
+        );
     }
 
     function loadPartition (partitionName) {
@@ -875,21 +1121,36 @@
     }
 
     function loadCollection () {
-        if (confirm(`Load collection "${currentData.collectionInfo.name}" into memory?`)) {
-            vscode.postMessage({ command: 'loadCollection' });
-        }
+        showConfirmDialog(
+            'Load Collection',
+            `Load collection "${currentData.collectionInfo.name}" into memory?`,
+            () => {
+                vscode.postMessage({ command: 'loadCollection' });
+            },
+            'Load'
+        );
     }
 
     function releaseCollection () {
-        if (confirm(`Release collection "${currentData.collectionInfo.name}" from memory?`)) {
-            vscode.postMessage({ command: 'releaseCollection' });
-        }
+        showConfirmDialog(
+            'Release Collection',
+            `Release collection "${currentData.collectionInfo.name}" from memory?`,
+            () => {
+                vscode.postMessage({ command: 'releaseCollection' });
+            },
+            'Release'
+        );
     }
 
     function compactCollection () {
-        if (confirm(`Compact collection "${currentData.collectionInfo.name}" to optimize storage?`)) {
-            vscode.postMessage({ command: 'compactCollection' });
-        }
+        showConfirmDialog(
+            'Compact Collection',
+            `Compact collection "${currentData.collectionInfo.name}" to optimize storage?`,
+            () => {
+                vscode.postMessage({ command: 'compactCollection' });
+            },
+            'Compact'
+        );
     }
 
     function flushCollection () {
@@ -897,15 +1158,27 @@
     }
 
     function deleteAllEntities () {
-        if (confirm(`🚨 Delete all entities from "${currentData.collectionInfo.name}"? This cannot be undone!`)) {
-            vscode.postMessage({ command: 'deleteAllEntities' });
-        }
+        showConfirmDialog(
+            'Delete All Entities',
+            `Are you sure you want to delete all entities from "${currentData.collectionInfo.name}"? This cannot be undone!`,
+            () => {
+                vscode.postMessage({ command: 'deleteAllEntities' });
+            },
+            'Delete All',
+            true
+        );
     }
 
     function truncateCollection () {
-        if (confirm(`🚨 Truncate collection "${currentData.collectionInfo.name}"? This will remove all data but keep the schema!`)) {
-            vscode.postMessage({ command: 'truncateCollection' });
-        }
+        showConfirmDialog(
+            'Truncate Collection',
+            `Truncate collection "${currentData.collectionInfo.name}"? This will remove all data but keep the schema!`,
+            () => {
+                vscode.postMessage({ command: 'truncateCollection' });
+            },
+            'Truncate',
+            true
+        );
     }
 
     function updateCollectionProperties () {
@@ -955,7 +1228,7 @@
         const metricType = document.getElementById('index-metric-select').value;
 
         if (!fieldName || !indexType || !metricType) {
-            alert('Please select field, index type, and metric type');
+            showNotification('Please select field, index type, and metric type', 'error');
             return;
         }
 
@@ -970,15 +1243,26 @@
     }
 
     function rebuildAllIndexes () {
-        if (confirm('Rebuild all indexes? This may take some time and will temporarily affect query performance.')) {
-            vscode.postMessage({ command: 'rebuildAllIndexes' });
-        }
+        showConfirmDialog(
+            'Rebuild All Indexes',
+            'This may take some time and will temporarily affect query performance.',
+            () => {
+                vscode.postMessage({ command: 'rebuildAllIndexes' });
+            },
+            'Rebuild'
+        );
     }
 
     function dropAllIndexes () {
-        if (confirm('🚨 Drop ALL indexes? This will significantly impact query performance until new indexes are created!')) {
-            vscode.postMessage({ command: 'dropAllIndexes' });
-        }
+        showConfirmDialog(
+            'Drop All Indexes',
+            'This will significantly impact query performance until new indexes are created!',
+            () => {
+                vscode.postMessage({ command: 'dropAllIndexes' });
+            },
+            'Drop All',
+            true
+        );
     }
 
     function analyzeIndexPerformance () {
@@ -990,16 +1274,21 @@
     }
 
     function compactPartitions () {
-        if (confirm('Compact all partitions? This will optimize storage and may take some time.')) {
-            vscode.postMessage({ command: 'compactPartitions' });
-        }
+        showConfirmDialog(
+            'Compact Partitions',
+            'This will optimize storage and may take some time.',
+            () => {
+                vscode.postMessage({ command: 'compactPartitions' });
+            },
+            'Compact'
+        );
     }
 
     // Alias management functions
     function createAlias () {
         const aliasName = document.getElementById('new-alias-name').value.trim();
         if (!aliasName) {
-            alert('Please enter an alias name');
+            showNotification('Please enter an alias name', 'error');
             return;
         }
 
@@ -1013,12 +1302,18 @@
     }
 
     function dropAlias (aliasName) {
-        if (confirm(`Drop alias "${aliasName}"?`)) {
-            vscode.postMessage({
-                command: 'dropAlias',
-                aliasName: aliasName
-            });
-        }
+        showConfirmDialog(
+            'Drop Alias',
+            `Are you sure you want to drop alias "${aliasName}"?`,
+            () => {
+                vscode.postMessage({
+                    command: 'dropAlias',
+                    aliasName: aliasName
+                });
+            },
+            'Drop',
+            true
+        );
     }
 
     function switchAliasTarget () {
@@ -1026,17 +1321,22 @@
         const newTarget = document.getElementById('new-target-collection').value.trim();
 
         if (!aliasName || !newTarget) {
-            alert('Please select alias and enter new target collection');
+            showNotification('Please select alias and enter new target collection', 'error');
             return;
         }
 
-        if (confirm(`Switch alias "${aliasName}" to target collection "${newTarget}"?`)) {
-            vscode.postMessage({
-                command: 'switchAliasTarget',
-                aliasName: aliasName,
-                newTargetCollection: newTarget
-            });
-        }
+        showConfirmDialog(
+            'Switch Alias Target',
+            `Switch alias "${aliasName}" to target collection "${newTarget}"?`,
+            () => {
+                vscode.postMessage({
+                    command: 'switchAliasTarget',
+                    aliasName: aliasName,
+                    newTargetCollection: newTarget
+                });
+            },
+            'Switch'
+        );
     }
 
     // Properties management functions
@@ -1064,28 +1364,44 @@
     }
 
     function resetProperties () {
-        if (confirm('Reset all properties to their original values?')) {
-            renderUI(); // Re-render to reset form values
-        }
+        showConfirmDialog(
+            'Reset Properties',
+            'Reset all properties to their original values?',
+            () => {
+                renderUI(); // Re-render to reset form values
+            },
+            'Reset'
+        );
     }
 
     function renameCollection () {
-        const newName = prompt(`Enter new name for collection "${currentData.collectionInfo.name}":`, currentData.collectionInfo.name);
-        if (newName && newName !== currentData.collectionInfo.name) {
-            if (confirm(`Rename collection from "${currentData.collectionInfo.name}" to "${newName}"?`)) {
-                vscode.postMessage({
-                    command: 'renameCollection',
-                    newName: newName
-                });
+        showInputDialog(
+            'Rename Collection',
+            `Enter new name for collection "${currentData.collectionInfo.name}":`,
+            currentData.collectionInfo.name,
+            (newName) => {
+                if (newName && newName !== currentData.collectionInfo.name) {
+                    showConfirmDialog(
+                        'Rename Collection',
+                        `Rename collection from "${currentData.collectionInfo.name}" to "${newName}"?`,
+                        () => {
+                            vscode.postMessage({
+                                command: 'renameCollection',
+                                newName: newName
+                            });
+                        },
+                        'Rename'
+                    );
+                }
             }
-        }
+        );
     }
 
     // Enhanced operation functions
     function importData () {
         const fileInput = document.getElementById('import-file');
         if (!fileInput.files.length) {
-            alert('Please select a file to import');
+            showNotification('Please select a file to import', 'error');
             return;
         }
 
@@ -1101,7 +1417,7 @@
                     fileName: file.name
                 });
             } catch (error) {
-                alert('Invalid JSON file format');
+                showNotification('Invalid JSON file format', 'error');
             }
         };
 
