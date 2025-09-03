@@ -537,6 +537,7 @@ export function activate( context: vscode.ExtensionContext ) {
                     panel,
                     context,
                     connectionManager,
+                    treeProvider,
                     item.collection.name,
                     item.connection.id,
                     item.database?.name || 'default'
@@ -650,6 +651,7 @@ async function setupCollectionManagementWebview(
     panel: vscode.WebviewPanel,
     context: vscode.ExtensionContext,
     connectionManager: ConnectionManager,
+    treeProvider: VectorDBTreeProvider,
     collectionName: string,
     connectionId: string,
     databaseName: string
