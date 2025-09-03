@@ -55,6 +55,48 @@ export class PlaceholderStrategy implements VectorDBStrategy {
         throw new Error( `${this.type} integration is under development` );
     }
 
+    async addField(
+        collectionName: string,
+        fieldName: string,
+        fieldType: string,
+        dimension?: number,
+        nullable?: boolean,
+        defaultValue?: string
+    ): Promise<void> {
+        this.showUnderDevelopmentMessage();
+        throw new Error( `${this.type} integration is under development` );
+    }
+
+    async updateCollectionProperties( collectionName: string, properties: any ): Promise<void> {
+        this.showUnderDevelopmentMessage();
+        throw new Error( `${this.type} integration is under development` );
+    }
+
+    async flushCollection( collectionName: string ): Promise<void> {
+        this.showUnderDevelopmentMessage();
+        throw new Error( `${this.type} integration is under development` );
+    }
+
+    async truncateCollection( collectionName: string ): Promise<void> {
+        this.showUnderDevelopmentMessage();
+        throw new Error( `${this.type} integration is under development` );
+    }
+
+    async deleteAllEntities( collectionName: string ): Promise<number> {
+        this.showUnderDevelopmentMessage();
+        throw new Error( `${this.type} integration is under development` );
+    }
+
+    async loadPartition( collectionName: string, partitionName: string ): Promise<void> {
+        this.showUnderDevelopmentMessage();
+        throw new Error( `${this.type} integration is under development` );
+    }
+
+    async releasePartition( collectionName: string, partitionName: string ): Promise<void> {
+        this.showUnderDevelopmentMessage();
+        throw new Error( `${this.type} integration is under development` );
+    }
+
     async insertVectors( collection: string, vectors: number[][], ids?: string[], metadata?: any[] ): Promise<number> {
         this.showUnderDevelopmentMessage();
         throw new Error( `${this.type} integration is under development` );

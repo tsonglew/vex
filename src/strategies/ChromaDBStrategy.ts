@@ -172,6 +172,89 @@ export class ChromaDBStrategy implements VectorDBStrategy {
         }
     }
 
+    async addField(
+        collectionName: string,
+        fieldName: string,
+        fieldType: string,
+        dimension?: number,
+        nullable?: boolean,
+        defaultValue?: string
+    ): Promise<void> {
+        // ChromaDB doesn't support dynamic field addition like Milvus
+        throw new Error( 'ChromaDB does not support adding fields to existing collections' );
+    }
+
+    async updateCollectionProperties( collectionName: string, properties: any ): Promise<void> {
+        if ( !this.httpClient ) {
+            throw new Error( 'ChromaDB client not connected' );
+        }
+
+        try {
+            await this.httpClient.put( `/api/v1/collections/${collectionName}`, {
+                metadata: properties
+            } );
+        } catch ( error ) {
+            throw new Error( `Failed to update collection properties: ${error}` );
+        }
+    }
+
+    async flushCollection( collectionName: string ): Promise<void> {
+        // ChromaDB doesn't require explicit flushing
+        console.log( `ChromaDB collection ${collectionName} doesn't require explicit flushing` );
+    }
+
+    async truncateCollection( collectionName: string ): Promise<void> {
+        if ( !this.httpClient ) {
+            throw new Error( 'ChromaDB client not connected' );
+        }
+
+        try {
+            // ChromaDB doesn't have truncate, so we'll delete and recreate the collection
+            const collectionInfo = await this.httpClient.get( `/api/v1/collections/${collectionName}` );
+            await this.httpClient.delete( `/api/v1/collections/${collectionName}` );
+            await this.httpClient.post( '/api/v1/collections', {
+                name: collectionName,
+                metadata: collectionInfo.data.metadata
+            } );
+        } catch ( error ) {
+            throw new Error( `Failed to truncate collection: ${error}` );
+        }
+    }
+
+    async deleteAllEntities( collectionName: string ): Promise<number> {
+        if ( !this.httpClient ) {
+            throw new Error( 'ChromaDB client not connected' );
+        }
+
+        try {
+            // Get all IDs first
+            const response = await this.httpClient.post( `/api/v1/collections/${collectionName}/get`, {
+                include: []
+            } );
+            const ids = response.data?.ids || [];
+
+            if ( ids.length > 0 ) {
+                await this.httpClient.post( `/api/v1/collections/${collectionName}/delete`, {
+                    ids: ids
+                } );
+            }
+
+            return ids.length;
+        } catch ( error ) {
+            throw new Error( `Failed to delete all entities: ${error}` );
+        }
+    }
+
+    async loadPartition( collectionName: string, partitionName: string ): Promise<void> {
+        // ChromaDB doesn't have partitions
+        throw new Error( 'ChromaDB does not support partitions' );
+    }
+
+    async releasePartition( collectionName: string, partitionName: string ): Promise<void> {
+        // ChromaDB doesn't have partitions
+        throw new Error( 'ChromaDB does not support partitions' );
+    }
+
     async insertVectors( collection: string, vectors: number[][], ids?: string[], metadata?: any[] ): Promise<number> {
         if ( !this.httpClient ) {
             throw new Error( 'ChromaDB client not connected' );

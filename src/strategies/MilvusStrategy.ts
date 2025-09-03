@@ -1105,7 +1105,7 @@ cd docker && docker-compose up -d` );
         try {
             // First, get the current collection schema
             const collectionInfo = await this.client.describeCollection( { collection_name: collectionName } );
-            
+
             if ( !collectionInfo.schema ) {
                 throw new Error( 'Could not retrieve collection schema' );
             }
@@ -1155,7 +1155,7 @@ cd docker && docker-compose up -d` );
             }
 
             // Create new collection with updated schema
-            const newFields = [...( collectionInfo.schema?.fields || [] ), newField ];
+            const newFields = [...( collectionInfo.schema?.fields || [] ), newField];
             const tempCollectionName = `${collectionName}_temp_${Date.now()}`;
 
             // Map consistency level string to proper type
@@ -1167,7 +1167,7 @@ cd docker && docker-compose up -d` );
                 'Customized': 'Customized'
             };
 
-            const consistencyLevel = collectionInfo.consistency_level ? 
+            const consistencyLevel = collectionInfo.consistency_level ?
                 consistencyLevelMap[collectionInfo.consistency_level as string] || 'Session' : 'Session';
 
             try {
@@ -1185,7 +1185,7 @@ cd docker && docker-compose up -d` );
                         output_fields: ['*'],
                         limit: 16384
                     } ).then( async ( response ) => {
-                        if ( response?.data && response.data.length > 0 ) {
+                        if ( response?.data && response.data.length > 0 && this.client ) {
                             await this.client.insert( {
                                 collection_name: tempCollectionName,
                                 data: response.data
