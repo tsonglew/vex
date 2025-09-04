@@ -13,6 +13,21 @@ export class MilvusStrategy implements VectorDBStrategy {
     readonly type = 'milvus';
     private client: MilvusClient | undefined;
 
+    /**
+     * 检查Milvus SDK响应的状态码
+     * 如果status.error_code不是0，抛出异常信息
+     */
+    private checkResponseStatus(response: any, operation: string = 'operation'): void {
+        if (response && response.status) {
+            const errorCode = response.status.error_code || response.status.ErrorCode;
+            if (errorCode !== 0) {
+                const reason = response.status.reason || response.status.Reason || 'Unknown error';
+                throw new Error(`Milvus ${operation} failed (error code: ${errorCode}): ${reason}`);
+            }
+        }
+        // 如果response没有status字段，假设是成功的（某些API可能没有status字段）
+    }
+
     async connect( host: string, port: string, username?: string, password?: string ): Promise<void> {
         try {
             // Handle Docker networking issue: use 127.0.0.1 instead of localhost
@@ -112,6 +127,9 @@ cd docker && docker-compose up -d` );
             const response = await this.client.listDatabases();
             console.log( 'Milvus listDatabases response:', response );
 
+            // Check response status first
+            this.checkResponseStatus(response, 'listDatabases');
+
             // Handle different response formats from different Milvus versions
             let databases: DatabaseInfo[] = [];
 
@@ -181,7 +199,11 @@ cd docker && docker-compose up -d` );
 
         try {
             // Call the actual Milvus createDatabase API
-            await this.client.createDatabase( { db_name: name } );
+            const response = await this.client.createDatabase( { db_name: name } );
+            
+            // Check response status
+            this.checkResponseStatus(response, 'createDatabase');
+            
             console.log( 'Database created successfully via Milvus API' );
         } catch ( error ) {
             console.error( 'Error calling Milvus createDatabase API:', error );
@@ -211,7 +233,11 @@ cd docker && docker-compose up -d` );
 
         try {
             // Call the actual Milvus dropDatabase API
-            await this.client.dropDatabase( { db_name: name } );
+            const response = await this.client.dropDatabase( { db_name: name } );
+            
+            // Check response status
+            this.checkResponseStatus(response, 'dropDatabase');
+            
             console.log( 'Database deleted successfully via Milvus API' );
         } catch ( error ) {
             console.error( 'Error calling Milvus dropDatabase API:', error );
@@ -241,7 +267,11 @@ cd docker && docker-compose up -d` );
 
         try {
             // Call the actual Milvus useDatabase API to set database context
-            await this.client.useDatabase( { db_name: name } );
+            const response = await this.client.useDatabase( { db_name: name } );
+            
+            // Check response status
+            this.checkResponseStatus(response, 'useDatabase');
+            
             console.log( 'Database context switched successfully via Milvus API' );
         } catch ( error ) {
             console.error( 'Error calling Milvus useDatabase API:', error );
@@ -272,6 +302,10 @@ cd docker && docker-compose up -d` );
 
         try {
             const response = await this.client.listCollections();
+            
+            // Check response status
+            this.checkResponseStatus(response, 'listCollections');
+            
             const collections = response.data?.map( ( col: any ) => ( {
                 name: col.name || col,
                 id: col.id || undefined
@@ -316,27 +350,36 @@ cd docker && docker-compose up -d` );
             console.log( 'Creating collection with fields:', fields );
 
             // Create collection with explicit schema
-            await this.client.createCollection( {
+            const createCollectionResponse = await this.client.createCollection( {
                 collection_name: name,
                 fields: fields,
                 enable_dynamic_field: false
             } );
+            
+            // Check response status
+            this.checkResponseStatus(createCollectionResponse, 'createCollection');
 
             console.log( 'Collection created, creating index...' );
 
             // Create index separately after collection creation
-            await this.client.createIndex( {
+            const createIndexResponse = await this.client.createIndex( {
                 collection_name: name,
                 field_name: 'vector',
                 index_type: IndexType.HNSW,
                 metric_type: metricMap[metric] || MetricType.COSINE,
                 params: { M: 8, efConstruction: 64 }
             } );
+            
+            // Check response status
+            this.checkResponseStatus(createIndexResponse, 'createIndex');
 
             console.log( 'Index created, loading collection...' );
 
             // Load the newly created collection to make it ready for operations
-            await this.client.loadCollection( { collection_name: name } );
+            const loadCollectionResponse = await this.client.loadCollection( { collection_name: name } );
+            
+            // Check response status
+            this.checkResponseStatus(loadCollectionResponse, 'loadCollection');
 
             console.log( 'Collection loaded successfully' );
         } catch ( error ) {
@@ -359,6 +402,9 @@ cd docker && docker-compose up -d` );
             try {
                 const loadStateResponse = await this.client.getLoadState( { collection_name: collection } );
                 console.log( `Load state for collection "${collection}":`, loadStateResponse );
+                
+                // Check response status
+                this.checkResponseStatus(loadStateResponse, 'getLoadState');
 
                 // Check if the collection is loaded based on the response state
                 if ( loadStateResponse && loadStateResponse.state ) {
@@ -382,7 +428,11 @@ cd docker && docker-compose up -d` );
 
             // Try to check collection existence first
             try {
-                await this.client.describeCollection( { collection_name: collection } );
+                const describeResponse = await this.client.describeCollection( { collection_name: collection } );
+                
+                // Check response status
+                this.checkResponseStatus(describeResponse, 'describeCollection');
+                
                 console.log( `Collection "${collection}" exists` );
             } catch ( describeError ) {
                 const describeErrorMsg = describeError instanceof Error ? describeError.message : String( describeError );
@@ -400,7 +450,11 @@ cd docker && docker-compose up -d` );
             // Collection exists but might not be loaded - try to load it
             try {
                 console.log( `Loading collection "${collection}"...` );
-                await this.client.loadCollection( { collection_name: collection } );
+                const loadResponse = await this.client.loadCollection( { collection_name: collection } );
+                
+                // Check response status
+                this.checkResponseStatus(loadResponse, 'loadCollection');
+                
                 console.log( `Collection "${collection}" loaded successfully` );
                 return true;
             } catch ( loadError ) {
@@ -494,8 +548,11 @@ cd docker && docker-compose up -d` );
                 collection_name: collection,
                 data: insertData
             } );
+            
+            // Check response status
+            this.checkResponseStatus(response, 'insertVectors');
 
-            const insertedCount = Number( response.insert_cnt ) || insertData.length;
+            const insertedCount = Number( response.insert_cnt );
             console.log( `Successfully inserted ${insertedCount} vectors` );
             return insertedCount;
         } catch ( error ) {
@@ -526,6 +583,9 @@ cd docker && docker-compose up -d` );
                 topk: topK,
                 output_fields: ['*']
             } );
+            
+            // Check response status
+            this.checkResponseStatus(response, 'searchVectors');
 
             const results = response.results || [];
             console.log( `Search completed, found ${results.length} results` );
@@ -678,6 +738,9 @@ cd docker && docker-compose up -d` );
                 collection_name: collection,
                 filter: `id in [${ids.join( ',' )}]`
             } );
+            
+            // Check response status
+            this.checkResponseStatus(response, 'deleteVectors');
 
             const deletedCount = Number( response.delete_cnt ) || 0;
             console.log( `Successfully deleted ${deletedCount} vectors` );
@@ -1076,7 +1139,11 @@ cd docker && docker-compose up -d` );
             }
 
             // Drop the collection
-            await this.client.dropCollection( { collection_name: collectionName } );
+            const dropResponse = await this.client.dropCollection( { collection_name: collectionName } );
+            
+            // Check response status
+            this.checkResponseStatus(dropResponse, 'dropCollection');
+            
             console.log( `Collection "${collectionName}" deleted successfully` );
         } catch ( error ) {
             console.error( 'Error deleting collection:', error );
