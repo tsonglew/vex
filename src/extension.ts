@@ -1,5 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 import { VectorDBTreeProvider, DatabaseConnection } from './vectorDBTreeProvider';
 import { DataViewerPanel } from './dataViewerPanel';
 import { ConnectionManager } from './connectionManager';
@@ -656,11 +658,25 @@ async function setupCollectionManagementWebview(
     connectionId: string,
     databaseName: string
 ) {
-    const scriptUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'collection-management.js' ) );
-    const styleResetUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'reset.css' ) );
-    const styleVSCodeUri = panel.webview.asWebviewUri( vscode.Uri.joinPath( context.extensionUri, 'media', 'vscode.css' ) );
+    // Read the React build HTML
+    const mediaPath = path.join( context.extensionPath, 'media' );
+    const indexHtmlPath = path.join( mediaPath, 'index.html' );
 
-    panel.webview.html = getCollectionManagementHTML( scriptUri, styleResetUri, styleVSCodeUri, collectionName );
+    let html: string;
+    try {
+        html = fs.readFileSync( indexHtmlPath, 'utf-8' );
+    } catch ( error ) {
+        throw new Error( `Failed to read React build HTML: ${error}` );
+    }
+
+    // Convert resource paths to webview URIs
+    const baseUri = panel.webview.asWebviewUri( vscode.Uri.file( mediaPath ) );
+    html = html
+        .replace( /href="\.\/static\//g, `href="${baseUri}/static/` )
+        .replace( /src="\.\/static\//g, `src="${baseUri}/static/` )
+        .replace( /<base href=".*?">/g, `<base href="${baseUri}/">` );
+
+    panel.webview.html = html;
 
     // Handle messages from the webview
     panel.webview.onDidReceiveMessage( async ( data ) => {
