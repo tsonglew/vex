@@ -38,6 +38,9 @@ export function activate( context: vscode.ExtensionContext ) {
                 if ( item.contextValue === 'collection' ) {
                     // Trigger collection management
                     await vscode.commands.executeCommand( 'vex.manageCollection', item );
+                } else if ( item.contextValue === 'database' ) {
+                    // Double-click on database to open database management view
+                    await vscode.commands.executeCommand( 'vex.manageDatabaseView', item );
                 } else if ( item.contextValue === 'serverConnectionConnected' || item.contextValue === 'serverConnectionDisconnected' ) {
                     // Double-click on server to connect/disconnect
                     const serverItem = item as any;
@@ -522,31 +525,29 @@ export function activate( context: vscode.ExtensionContext ) {
                     return;
                 }
 
-                // Create a new webview panel (tab) for collection management
+                // Create a new webview panel (tab) for database management
                 const panel = vscode.window.createWebviewPanel(
-                    'collectionManagement',
-                    `Manage Collection: ${item.collection.name}`,
+                    'databaseManagement',
+                    `Database Management: ${item.database.name}`,
                     vscode.ViewColumn.One,
                     {
                         enableScripts: true,
                         retainContextWhenHidden: true,
-                        localResourceRoots: [vscode.Uri.joinPath( context.extensionUri, 'media' )]
                     }
                 );
 
                 // Set up the webview content and messaging
-                await setupCollectionManagementWebview(
+                await setupDatabaseManagementWebview(
                     panel,
                     context,
                     connectionManager,
                     treeProvider,
-                    item.collection.name,
                     item.connection.id,
-                    item.database?.name || 'default'
+                    item.database.name
                 );
-
             } catch ( error ) {
-                vscode.window.showErrorMessage( `Failed to open collection management: ${error}` );
+                console.error( 'Error setting up database management webview:', error );
+                vscode.window.showErrorMessage( `Failed to open database management: ${error instanceof Error ? error.message : String( error )}` );
             }
         }
     } );
@@ -560,6 +561,44 @@ export function activate( context: vscode.ExtensionContext ) {
         );
         if ( confirmed === 'Clear All' ) {
             await treeProvider.clearAllConnections();
+        }
+    } );
+
+    // Command to manage database view (Milvus only) - opens database management in tab
+    const manageDatabaseViewCommand = vscode.commands.registerCommand( 'vex.manageDatabaseView', async ( item?: any ) => {
+        if ( item?.database && item?.connection ) {
+            try {
+                // Check if this is a Milvus connection
+                const connection = await connectionManager.getConnectionInfo( item.connection.id );
+                if ( !connection || connection.type !== 'milvus' ) {
+                    vscode.window.showWarningMessage( 'Database management is only available for Milvus databases.' );
+                    return;
+                }
+
+                // Create a new webview panel (tab) for database management
+                const panel = vscode.window.createWebviewPanel(
+                    'databaseManagement',
+                    `Database Management: ${item.database.name}`,
+                    vscode.ViewColumn.One,
+                    {
+                        enableScripts: true,
+                        retainContextWhenHidden: true,
+                    }
+                );
+
+                // Set up the webview content and messaging
+                await setupDatabaseManagementWebview(
+                    panel,
+                    context,
+                    connectionManager,
+                    treeProvider,
+                    item.connection.id,
+                    item.database.name
+                );
+            } catch ( error ) {
+                console.error( 'Error setting up database management webview:', error );
+                vscode.window.showErrorMessage( `Failed to open database management: ${error instanceof Error ? error.message : String( error )}` );
+            }
         }
     } );
 
@@ -586,6 +625,7 @@ export function activate( context: vscode.ExtensionContext ) {
         refreshDatabasesCommand,
         deleteServerCommand,
         manageCollectionCommand,
+        manageDatabaseViewCommand,
         clearAllConnectionsCommand
     );
 }
@@ -649,18 +689,17 @@ function generateId(): string {
     return Math.random().toString( 36 ).substring( 2, 9 );
 }
 
-async function setupCollectionManagementWebview(
+async function setupDatabaseManagementWebview(
     panel: vscode.WebviewPanel,
     context: vscode.ExtensionContext,
     connectionManager: ConnectionManager,
     treeProvider: VectorDBTreeProvider,
-    collectionName: string,
     connectionId: string,
     databaseName: string
 ) {
     // Read the React build HTML
-    const mediaPath = path.join( context.extensionPath, 'media' );
-    const indexHtmlPath = path.join( mediaPath, 'index.html' );
+    const buildPath = path.join( context.extensionPath, 'media' );
+    const indexHtmlPath = path.join( buildPath, 'index.html' );
 
     let html: string;
     try {
@@ -670,7 +709,7 @@ async function setupCollectionManagementWebview(
     }
 
     // Convert resource paths to webview URIs
-    const baseUri = panel.webview.asWebviewUri( vscode.Uri.file( mediaPath ) );
+    const baseUri = panel.webview.asWebviewUri( vscode.Uri.file( buildPath ) );
     html = html
         .replace( /href="\.\/static\//g, `href="${baseUri}/static/` )
         .replace( /src="\.\/static\//g, `src="${baseUri}/static/` )
@@ -683,51 +722,169 @@ async function setupCollectionManagementWebview(
         try {
             const strategy = ( connectionManager as any ).activeConnections.get( connectionId );
             if ( !strategy || strategy.type !== 'milvus' ) {
-                throw new Error( 'Collection management is only available for Milvus databases' );
+                throw new Error( 'Database management is only available for Milvus databases' );
             }
 
             switch ( data.command ) {
                 case 'refresh':
-                    await loadCollectionData( panel, strategy, collectionName );
+                    await loadDatabaseData( panel, strategy, databaseName );
                     break;
-                case 'createIndex':
-                    await strategy.createIndex( collectionName, data.fieldName, data.indexType, data.params );
-                    vscode.window.showInformationMessage( `Index created successfully on field "${data.fieldName}"` );
-                    await loadCollectionData( panel, strategy, collectionName );
+                case 'selectCollection':
+                    await loadCollectionData( panel, strategy, data.collectionName );
                     break;
-                case 'dropIndex':
-                    await strategy.dropIndex( collectionName, data.indexName );
-                    vscode.window.showInformationMessage( `Index "${data.indexName}" dropped successfully` );
-                    await loadCollectionData( panel, strategy, collectionName );
-                    break;
-                case 'createPartition':
-                    await strategy.createPartition( collectionName, data.partitionName );
-                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" created successfully` );
-                    await loadCollectionData( panel, strategy, collectionName );
-                    break;
-                case 'dropPartition':
-                    await strategy.dropPartition( collectionName, data.partitionName );
-                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" dropped successfully` );
-                    await loadCollectionData( panel, strategy, collectionName );
-                    break;
-
                 case 'loadCollection':
-                    await strategy.loadCollection( collectionName );
-                    vscode.window.showInformationMessage( `Collection "${collectionName}" loaded successfully` );
-                    await loadCollectionData( panel, strategy, collectionName );
+                    await strategy.loadCollection( data.collectionName );
+                    vscode.window.showInformationMessage( `Collection "${data.collectionName}" loaded successfully` );
+                    await loadDatabaseData( panel, strategy, databaseName );
                     break;
                 case 'releaseCollection':
-                    await strategy.releaseCollection( collectionName );
-                    vscode.window.showInformationMessage( `Collection "${collectionName}" released successfully` );
-                    await loadCollectionData( panel, strategy, collectionName );
+                    await strategy.releaseCollection( data.collectionName );
+                    vscode.window.showInformationMessage( `Collection "${data.collectionName}" released successfully` );
+                    await loadDatabaseData( panel, strategy, databaseName );
                     break;
-                case 'deleteCollection':
-                    await strategy.deleteCollection( collectionName );
-                    vscode.window.showInformationMessage( `Collection "${collectionName}" deleted successfully` );
-                    // Refresh the tree provider to reflect the deletion
-                    treeProvider.refresh();
-                    // Close the webview panel since the collection no longer exists
-                    panel.dispose();
+                case 'createIndex':
+                    await strategy.createIndex( data.collectionName || strategy.currentCollection, data.fieldName, data.indexType, data.params );
+                    vscode.window.showInformationMessage( `Index created successfully on field "${data.fieldName}"` );
+                    await loadCollectionData( panel, strategy, data.collectionName || strategy.currentCollection );
+                    break;
+                case 'dropIndex':
+                    await strategy.dropIndex( data.collectionName || strategy.currentCollection, data.indexName );
+                    vscode.window.showInformationMessage( `Index "${data.indexName}" dropped successfully` );
+                    await loadCollectionData( panel, strategy, data.collectionName || strategy.currentCollection );
+                    break;
+                case 'createPartition':
+                    await strategy.createPartition( data.collectionName || strategy.currentCollection, data.partitionName );
+                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" created successfully` );
+                    await loadCollectionData( panel, strategy, data.collectionName || strategy.currentCollection );
+                    break;
+                case 'dropPartition':
+                    await strategy.dropPartition( data.collectionName || strategy.currentCollection, data.partitionName );
+                    vscode.window.showInformationMessage( `Partition "${data.partitionName}" dropped successfully` );
+                    await loadCollectionData( panel, strategy, data.collectionName || strategy.currentCollection );
+                    break;
+                case 'addField':
+                    await strategy.addField( 
+                        data.collectionName || strategy.currentCollection, 
+                        data.fieldName, 
+                        data.fieldType, 
+                        data.dimension, 
+                        data.nullable, 
+                        data.defaultValue 
+                    );
+                    vscode.window.showInformationMessage( `Field "${data.fieldName}" added successfully` );
+                    await loadCollectionData( panel, strategy, data.collectionName || strategy.currentCollection );
+                    break;
+                case 'deleteField':
+                    await strategy.deleteField( data.collectionName || strategy.currentCollection, data.fieldName );
+                    vscode.window.showInformationMessage( `Field "${data.fieldName}" deleted successfully` );
+                    await loadCollectionData( panel, strategy, data.collectionName || strategy.currentCollection );
+                    break;
+                case 'showDeleteCollectionDialog':
+                    if ( data.collectionName ) {
+                        const confirmed = await vscode.window.showWarningMessage(
+                            `Are you sure you want to delete collection "${data.collectionName}"? This will also delete all vectors within it.`,
+                            { modal: true },
+                            'Delete Collection'
+                        );
+                        if ( confirmed === 'Delete Collection' ) {
+                            try {
+                                await strategy.dropCollection( data.collectionName );
+                                vscode.window.showInformationMessage( `Collection "${data.collectionName}" deleted successfully` );
+                                treeProvider.refresh();
+                                await loadDatabaseData( panel, strategy, databaseName );
+                            } catch ( error ) {
+                                vscode.window.showErrorMessage( `Failed to delete collection: ${error instanceof Error ? error.message : String( error )}` );
+                            }
+                        }
+                    }
+                    break;
+                case 'showCreateFieldDialog':
+                    const fieldName = await vscode.window.showInputBox( {
+                        prompt: 'Enter field name',
+                        placeHolder: 'e.g., my_field'
+                    } );
+                    if ( !fieldName ) {
+                        break;
+                    }
+
+                    const fieldType = await vscode.window.showQuickPick( 
+                        ['int64', 'float', 'string', 'varchar', 'float_vector', 'binary_vector'],
+                        { placeHolder: 'Select field type' }
+                    );
+                    if ( !fieldType ) {
+                        break;
+                    }
+
+                    let dimension: number | undefined;
+                    if ( fieldType.includes( 'vector' ) ) {
+                        const dimStr = await vscode.window.showInputBox( {
+                            prompt: 'Enter vector dimension',
+                            placeHolder: 'e.g., 128',
+                            validateInput: ( value ) => {
+                                const num = parseInt( value );
+                                if ( isNaN( num ) || num <= 0 ) {
+                                    return 'Please enter a positive number';
+                                }
+                                return null;
+                            }
+                        } );
+                        if ( !dimStr ) {
+                            break;
+                        }
+                        dimension = parseInt( dimStr );
+                    }
+
+                    const nullable = await vscode.window.showQuickPick( 
+                        ['Yes', 'No'],
+                        { placeHolder: 'Should this field be nullable?' }
+                    );
+                    if ( nullable === undefined ) {
+                        break;
+                    }
+
+                    const defaultValue = await vscode.window.showInputBox( {
+                        prompt: 'Enter default value (optional)',
+                        placeHolder: 'Leave empty for no default'
+                    } );
+
+                    // This dialog should not be called in database management context
+                    vscode.window.showErrorMessage( 'Field operations should be performed through collection selection' );
+                    break;
+                case 'showDeleteFieldDialog':
+                    // This dialog should not be called in database management context
+                    vscode.window.showErrorMessage( 'Field operations should be performed through collection selection' );
+                    break;
+                case 'showCreateIndexDialog':
+                    // This dialog should not be called in database management context
+                    vscode.window.showErrorMessage( 'Index operations should be performed through collection selection' );
+                    break;
+                case 'showDropIndexDialog':
+                    // This dialog should not be called in database management context
+                    vscode.window.showErrorMessage( 'Index operations should be performed through collection selection' );
+                    break;
+                case 'showCreatePartitionDialog':
+                    // This dialog should not be called in database management context
+                    vscode.window.showErrorMessage( 'Partition operations should be performed through collection selection' );
+                    break;
+                case 'showDropPartitionDialog':
+                    // This dialog should not be called in database management context
+                    vscode.window.showErrorMessage( 'Partition operations should be performed through collection selection' );
+                    break;
+
+                case 'createCollection':
+                    // Handle collection creation
+                    if ( data.collectionConfig ) {
+                        await strategy.createCollection( data.collectionConfig );
+                        vscode.window.showInformationMessage( `Collection "${data.collectionConfig.name}" created successfully` );
+                        treeProvider.refresh();
+                        // Refresh database data to show new collection
+                        await loadDatabaseData( panel, strategy, databaseName );
+                    }
+                    break;
+                case 'loadVectors':
+                    await loadVectorsData( panel, strategy, data.collectionName, data.offset || 0, data.limit || 100 );
+                    break;
+                // loadCollection and releaseCollection are already handled above with data.collectionName
                     break;
             }
         } catch ( error ) {
@@ -735,33 +892,80 @@ async function setupCollectionManagementWebview(
         }
     } );
 
-    // Load initial data
+    // Load initial database data
     const strategy = ( connectionManager as any ).activeConnections.get( connectionId );
     if ( strategy && strategy.type === 'milvus' ) {
-        await loadCollectionData( panel, strategy, collectionName );
+        await loadDatabaseData( panel, strategy, databaseName );
+    }
+}
+
+async function loadDatabaseData( panel: vscode.WebviewPanel, strategy: any, databaseName: string ) {
+    try {
+        const databaseInfo = await strategy.getDatabaseInfo();
+        panel.webview.postMessage( {
+            command: 'updateDatabaseData',
+            data: {
+                databaseInfo: databaseInfo.databaseInfo,
+                currentCollection: null // Clear current collection when loading database data
+            }
+        } );
+    } catch ( error ) {
+        console.error( 'Error loading database data:', error );
+        panel.webview.postMessage( {
+            command: 'showError',
+            message: `Failed to load database data: ${error instanceof Error ? error.message : String( error )}`
+        } );
     }
 }
 
 async function loadCollectionData( panel: vscode.WebviewPanel, strategy: any, collectionName: string ) {
     try {
+        // First get the database info to maintain the database context
+        const databaseInfo = await strategy.getDatabaseInfo();
+        
+        // Then get the specific collection data
         const collectionInfo = await strategy.getCollectionInfo( collectionName );
         const collectionStats = await strategy.getCollectionStatistics( collectionName );
         const indexes = await strategy.getIndexes( collectionName );
         const partitions = await strategy.getPartitions( collectionName );
 
         panel.webview.postMessage( {
-            command: 'updateCollectionData',
+            command: 'updateDatabaseData',
             data: {
-                collectionInfo,
-                collectionStats,
-                indexes,
-                partitions
+                databaseInfo: databaseInfo.databaseInfo,
+                currentCollection: {
+                    collectionInfo,
+                    collectionStats,
+                    indexes,
+                    partitions
+                }
             }
         } );
     } catch ( error ) {
         panel.webview.postMessage( {
             command: 'showError',
-            message: `Failed to load collection data: ${error}`
+            message: `Failed to load collection data: ${error instanceof Error ? error.message : String( error )}`
+        } );
+    }
+}
+
+async function loadVectorsData( panel: vscode.WebviewPanel, strategy: any, collectionName: string, offset: number, limit: number ) {
+    try {
+        const vectorsResult = await strategy.listVectors( collectionName, offset, limit );
+        
+        panel.webview.postMessage( {
+            command: 'updateVectors',
+            data: {
+                vectors: vectorsResult.vectors,
+                total: vectorsResult.total,
+                offset: vectorsResult.offset,
+                limit: vectorsResult.limit
+            }
+        } );
+    } catch ( error ) {
+        panel.webview.postMessage( {
+            command: 'showError',
+            message: `Failed to load vectors: ${error instanceof Error ? error.message : String( error )}`
         } );
     }
 }

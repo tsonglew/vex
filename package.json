@@ -106,12 +106,6 @@
         "category": "Vector Database"
       },
       {
-        "command": "vex.manageCollection",
-        "title": "Manage Collection",
-        "icon": "$(settings-gear)",
-        "category": "Vector Database"
-      },
-      {
         "command": "vex.viewVectorDetails",
         "title": "View Vector Details",
         "icon": "$(eye)",
@@ -127,6 +121,12 @@
         "command": "vex.deleteDatabase",
         "title": "Delete Database",
         "icon": "$(trash)",
+        "category": "Vector Database"
+      },
+      {
+        "command": "vex.manageDatabaseView",
+        "title": "Manage Database",
+        "icon": "$(settings-gear)",
         "category": "Vector Database"
       },
       {
@@ -218,6 +218,11 @@
           "group": "collections@1"
         },
         {
+          "command": "vex.manageDatabaseView",
+          "when": "view == vexVectorDBTree && viewItem == database",
+          "group": "databases@1"
+        },
+        {
           "command": "vex.deleteDatabase",
           "when": "view == vexVectorDBTree && viewItem == database",
           "group": "databases@2"
@@ -236,11 +241,6 @@
           "command": "vex.searchVectors",
           "when": "view == vexVectorDBTree && viewItem == collection",
           "group": "collection@3"
-        },
-        {
-          "command": "vex.manageCollection",
-          "when": "view == vexVectorDBTree && viewItem == collection",
-          "group": "collection@4"
         },
         {
           "command": "vex.deleteCollection",

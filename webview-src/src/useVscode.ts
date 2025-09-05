@@ -26,6 +26,20 @@ export interface CollectionData {
     partitions: any[];
 }
 
+export interface DatabaseData {
+    databaseInfo: {
+        name: string;
+        description?: string;
+        collections: Array<{
+            name: string;
+            loadState: string;
+            rowCount: number;
+            description?: string;
+        }>;
+    };
+    currentCollection?: CollectionData;
+}
+
 let vscodeApi: VSCodeAPI | null = null;
 
 // Initialize VS Code API
@@ -53,9 +67,14 @@ export function useVscode<T = any>() {
 
             switch ( message.command ) {
                 case 'updateCollectionData':
+                case 'updateDatabaseData':
                     setState( message.data );
                     setIsLoading( false );
                     setError( null );
+                    break;
+                case 'updateVectors':
+                    // Handle vectors update separately to avoid overwriting main state
+                    window.dispatchEvent(new CustomEvent('vectorsUpdate', { detail: message.data }));
                     break;
                 case 'showError':
                     setError( message.message );

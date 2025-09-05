@@ -2,10 +2,55 @@ import { MilvusClient, DataType, MetricType, IndexType, ShowCollectionsResponse 
 import { VectorDBStrategy } from './VectorDBStrategy';
 import * as vscode from 'vscode';
 
+// Custom error class for collection not loaded scenarios
+export class CollectionNotLoadedError extends Error {
+    public readonly collectionName: string;
+    
+    constructor(collectionName: string, message?: string) {
+        super(message || `Collection "${collectionName}" is not loaded`);
+        this.name = 'CollectionNotLoadedError';
+        this.collectionName = collectionName;
+    }
+}
+
 // Define interfaces for different response formats we might encounter
 interface DatabaseInfo {
     name: string;
     id?: string;
+}
+
+// Collection configuration interfaces
+export interface CollectionConfig {
+    name: string;
+    description: string;
+    consistencyLevel: 'Strong' | 'Session' | 'Bounded' | 'Eventually';
+    enableDynamicField: boolean;
+    fields: FieldDefinition[];
+    vectorField: VectorFieldConfig;
+    indexConfig: IndexConfig;
+}
+
+export interface FieldDefinition {
+    name: string;
+    dataType: string;
+    isPrimaryKey: boolean;
+    autoId: boolean;
+    nullable: boolean;
+    defaultValue?: string;
+    maxLength?: number;
+    description?: string;
+}
+
+export interface VectorFieldConfig {
+    name: string;
+    dimension: number;
+    description?: string;
+}
+
+export interface IndexConfig {
+    indexType: 'FLAT' | 'IVF_FLAT' | 'IVF_SQ8' | 'IVF_PQ' | 'HNSW' | 'SCANN';
+    metricType: 'L2' | 'IP' | 'COSINE' | 'HAMMING' | 'JACCARD';
+    params: Record<string, any>;
 }
 
 
@@ -14,18 +59,81 @@ export class MilvusStrategy implements VectorDBStrategy {
     private client: MilvusClient | undefined;
 
     /**
-     * 检查Milvus SDK响应的状态码
-     * 如果status.error_code不是0，抛出异常信息
+     * Map Milvus data type enum to readable string
      */
-    private checkResponseStatus( response: any, operation: string = 'operation' ): void {
-        if ( response && response.status ) {
-            const code = response.status.code;
-            if ( code !== 0 ) {
-                const reason = response.status.reason || 'Unknown error';
-                throw new Error( `Milvus ${operation} failed (error code: ${code}): ${reason}` );
+    private mapDataTypeToString( dataType: number ): string {
+        const dataTypeMap: { [key: number]: string } = {
+            1: 'Bool',
+            2: 'Int8', 
+            3: 'Int16',
+            4: 'Int32',
+            5: 'Int64',
+            10: 'Float',
+            11: 'Double',
+            20: 'String',
+            21: 'VarChar',
+            100: 'BinaryVector',
+            101: 'FloatVector'
+        };
+        return dataTypeMap[dataType] || `Unknown(${dataType})`;
+    }
+
+    /**
+     * Handle collection not loaded error by prompting user and optionally loading
+     */
+    private async handleCollectionNotLoaded( collection: string ): Promise<boolean> {
+        const loadChoice = await vscode.window.showInformationMessage(
+            `Collection "${collection}" is not loaded. Do you want to load it to proceed?`,
+            'Load Collection',
+            'Cancel'
+        );
+
+        if ( loadChoice === 'Load Collection' ) {
+            try {
+                console.log( `Loading collection "${collection}"...` );
+                const loadResponse = await this.client!.loadCollection( { collection_name: collection } );
+                this.checkResponseStatus( loadResponse, 'loadCollection' );
+                console.log( `Collection "${collection}" loaded successfully` );
+                return true;
+            } catch ( loadError ) {
+                const loadErrorMessage = loadError instanceof Error ? loadError.message : String( loadError );
+                
+                // Check if collection is already loaded
+                if ( loadErrorMessage.toLowerCase().includes( 'already loaded' ) ||
+                    loadErrorMessage.toLowerCase().includes( 'already exists' ) ) {
+                    console.log( `Collection "${collection}" is already loaded` );
+                    return true;
+                }
+
+                console.error( `Failed to load collection "${collection}":`, loadErrorMessage );
+                
+                // Ask user if they want to retry
+                const retryChoice = await vscode.window.showErrorMessage(
+                    `Failed to load collection "${collection}": ${loadErrorMessage}. Try again?`,
+                    'Retry',
+                    'Cancel'
+                );
+
+                if ( retryChoice === 'Retry' ) {
+                    await new Promise( resolve => setTimeout( resolve, 1000 ) );
+                    await this.client!.loadCollection( { collection_name: collection } );
+                    console.log( `Collection "${collection}" loaded successfully on retry` );
+                    return true;
+                } else {
+                    throw new Error( `Failed to load collection "${collection}": ${loadErrorMessage}` );
+                }
             }
         }
-        // 如果response没有status字段，假设是成功的（某些API可能没有status字段）
+        
+        return false; // User declined to load
+    }
+    private checkResponseStatus( response: any, operation: string = 'operation' ): void {
+        const code = response?.status?.code ?? 0;
+        const error_code = response?.error_code ?? 'Success';
+        const reason = response?.status?.reason ?? '';
+        if ( code !== 0 && error_code.toLowerCase() !== 'success') {
+            throw new Error( `Milvus ${operation} failed (error code: ${code}): ${reason}` );
+        }
     }
 
     async connect( host: string, port: string, username?: string, password?: string ): Promise<void> {
@@ -318,56 +426,178 @@ cd docker && docker-compose up -d` );
         }
     }
 
-    async createCollection( name: string, dimension: number, metric: string ): Promise<void> {
+    async createCollection( name: string, dimension: number, metric: string ): Promise<void>;
+    async createCollection( config: CollectionConfig ): Promise<void>;
+    async createCollection( nameOrConfig: string | CollectionConfig, dimension?: number, metric?: string ): Promise<void> {
         if ( !this.client ) {
             throw new Error( 'Milvus client not connected' );
         }
 
-        const args = { name, dimension, metric };
-        console.log( 'Creating collection with args:', args );
+        // Handle both legacy and new API calls
+        let config: CollectionConfig;
+        if ( typeof nameOrConfig === 'string' ) {
+            // Legacy API call - convert to new format
+            config = {
+                name: nameOrConfig,
+                description: '',
+                consistencyLevel: 'Session',
+                enableDynamicField: false,
+                fields: [{
+                    name: 'id',
+                    dataType: 'Int64',
+                    isPrimaryKey: true,
+                    autoId: true,
+                    nullable: false,
+                    description: 'Primary key field'
+                }],
+                vectorField: {
+                    name: 'vector',
+                    dimension: dimension!,
+                    description: 'Vector embeddings field'
+                },
+                indexConfig: {
+                    indexType: 'HNSW',
+                    metricType: metric === 'cosine' ? 'COSINE' : metric === 'euclidean' ? 'L2' : 'IP',
+                    params: { M: 8, efConstruction: 64 }
+                }
+            };
+        } else {
+            config = nameOrConfig;
+        }
+
+        console.log( 'Creating collection with config:', config );
 
         try {
-            const metricMap: { [key: string]: MetricType } = {
-                'cosine': MetricType.COSINE,
-                'euclidean': MetricType.L2,
-                'dot': MetricType.IP
+            // Map data types from form to Milvus DataType enum
+            const dataTypeMap: { [key: string]: DataType } = {
+                'Bool': DataType.Bool,
+                'Int8': DataType.Int8,
+                'Int16': DataType.Int16,
+                'Int32': DataType.Int32,
+                'Int64': DataType.Int64,
+                'Float': DataType.Float,
+                'Double': DataType.Double,
+                'VarChar': DataType.VarChar,
+                'JSON': DataType.JSON
             };
 
-            const fields = [
-                {
-                    name: 'id',
-                    data_type: DataType.Int64,
-                    is_primary_key: true,
-                    auto_id: true
-                },
-                {
-                    name: 'vector',
-                    data_type: DataType.FloatVector,
-                    dim: dimension
+            // Map metric types
+            const metricMap: { [key: string]: MetricType } = {
+                'L2': MetricType.L2,
+                'IP': MetricType.IP,
+                'COSINE': MetricType.COSINE,
+                'HAMMING': MetricType.HAMMING,
+                'JACCARD': MetricType.JACCARD
+            };
+
+            // Map index types
+            const indexTypeMap: { [key: string]: IndexType } = {
+                'FLAT': IndexType.FLAT,
+                'IVF_FLAT': IndexType.IVF_FLAT,
+                'IVF_SQ8': IndexType.IVF_SQ8,
+                'IVF_PQ': IndexType.IVF_PQ,
+                'HNSW': IndexType.HNSW,
+                'SCANN': IndexType.ScaNN
+            };
+
+            // Build fields array
+            const fields: any[] = [];
+
+            // Add regular fields
+            config.fields.forEach( field => {
+                const fieldDef: any = {
+                    name: field.name,
+                    data_type: dataTypeMap[field.dataType] || DataType.VarChar,
+                    is_primary_key: field.isPrimaryKey,
+                    auto_id: field.autoId,
+                    nullable: field.nullable
+                };
+
+                // Add max_length for VarChar fields
+                if ( field.dataType === 'VarChar' && field.maxLength ) {
+                    fieldDef.max_length = field.maxLength;
                 }
-            ];
+
+                // Add description if provided
+                if ( field.description ) {
+                    fieldDef.description = field.description;
+                }
+
+                fields.push( fieldDef );
+            } );
+
+            // Add vector field
+            fields.push( {
+                name: config.vectorField.name,
+                data_type: DataType.FloatVector,
+                dim: config.vectorField.dimension,
+                description: config.vectorField.description || 'Vector embeddings field'
+            } );
 
             console.log( 'Creating collection with fields:', fields );
 
-            // Create collection with explicit schema
-            const createCollectionResponse = await this.client.createCollection( {
-                collection_name: name,
+            // Map consistency level
+            const consistencyLevelMap: { [key: string]: any } = {
+                'Strong': 'Strong',
+                'Session': 'Session', 
+                'Bounded': 'Bounded',
+                'Eventually': 'Eventually'
+            };
+
+            // Create collection with comprehensive schema
+            const createCollectionParams: any = {
+                collection_name: config.name,
                 fields: fields,
-                enable_dynamic_field: false
-            } );
+                enable_dynamic_field: config.enableDynamicField
+            };
+
+            // Add description if provided
+            if ( config.description ) {
+                createCollectionParams.description = config.description;
+            }
+
+            // Add consistency level if supported
+            if ( config.consistencyLevel && consistencyLevelMap[config.consistencyLevel] ) {
+                createCollectionParams.consistency_level = consistencyLevelMap[config.consistencyLevel];
+            }
+
+            const createCollectionResponse = await this.client.createCollection( createCollectionParams );
 
             // Check response status
             this.checkResponseStatus( createCollectionResponse, 'createCollection' );
 
             console.log( 'Collection created, creating index...' );
 
-            // Create index separately after collection creation
+            // Build index parameters based on index type
+            let indexParams: any = {};
+            
+            switch ( config.indexConfig.indexType ) {
+                case 'HNSW':
+                    indexParams = {
+                        M: config.indexConfig.params.M || 16,
+                        efConstruction: config.indexConfig.params.efConstruction || 200
+                    };
+                    break;
+                case 'IVF_FLAT':
+                case 'IVF_SQ8':
+                case 'IVF_PQ':
+                    indexParams = {
+                        nlist: config.indexConfig.params.nlist || 1024
+                    };
+                    break;
+                case 'FLAT':
+                default:
+                    indexParams = {};
+                    break;
+            }
+
+            // Create index for vector field
             const createIndexResponse = await this.client.createIndex( {
-                collection_name: name,
-                field_name: 'vector',
-                index_type: IndexType.HNSW,
-                metric_type: metricMap[metric] || MetricType.COSINE,
-                params: { M: 8, efConstruction: 64 }
+                collection_name: config.name,
+                field_name: config.vectorField.name,
+                index_type: indexTypeMap[config.indexConfig.indexType] || IndexType.HNSW,
+                metric_type: metricMap[config.indexConfig.metricType] || MetricType.COSINE,
+                params: indexParams
             } );
 
             // Check response status
@@ -376,15 +606,15 @@ cd docker && docker-compose up -d` );
             console.log( 'Index created, loading collection...' );
 
             // Load the newly created collection to make it ready for operations
-            const loadCollectionResponse = await this.client.loadCollection( { collection_name: name } );
+            const loadCollectionResponse = await this.client.loadCollection( { collection_name: config.name } );
 
             // Check response status
             this.checkResponseStatus( loadCollectionResponse, 'loadCollection' );
 
-            console.log( 'Collection loaded successfully' );
+            console.log( 'Collection created and loaded successfully' );
         } catch ( error ) {
             console.error( 'Error creating collection:', error );
-            throw new Error( `Failed to create collection with args ${JSON.stringify( args )}: ${error}` );
+            throw new Error( `Failed to create collection "${config.name}": ${error instanceof Error ? error.message : String( error )}` );
         }
     }
 
@@ -417,8 +647,8 @@ cd docker && docker-compose up -d` );
                         // Wait a bit and check again, or proceed as it will likely complete
                         return true;
                     } else if ( state === 'loadstatenotload' || state === 'not_load' || state === 'notloaded' ) {
-                        console.log( `Collection "${collection}" is not loaded, will attempt to load it` );
-                        // Continue to loading logic below
+                        console.log( `Collection "${collection}" is not loaded, will prompt user to load it` );
+                        // Continue to user confirmation logic below
                     }
                 }
             } catch ( loadStateError ) {
@@ -444,47 +674,14 @@ cd docker && docker-compose up -d` );
                 throw describeError;
             }
 
-            // Collection exists but might not be loaded - try to load it directly
-            // Skip query test as it may fail with "collection not loaded"
-
-            // Collection exists but might not be loaded - try to load it
-            try {
-                console.log( `Loading collection "${collection}"...` );
-                const loadResponse = await this.client.loadCollection( { collection_name: collection } );
-
-                // Check response status
-                this.checkResponseStatus( loadResponse, 'loadCollection' );
-
-                console.log( `Collection "${collection}" loaded successfully` );
+            // Collection exists but is not loaded - prompt user for confirmation before throwing error
+            const userWantsToLoad = await this.handleCollectionNotLoaded( collection );
+            if ( userWantsToLoad ) {
+                // Collection was successfully loaded, return true
                 return true;
-            } catch ( loadError ) {
-                const loadErrorMessage = loadError instanceof Error ? loadError.message : String( loadError );
-
-                // Check if collection is already loaded
-                if ( loadErrorMessage.toLowerCase().includes( 'already loaded' ) ||
-                    loadErrorMessage.toLowerCase().includes( 'already exists' ) ) {
-                    console.log( `Collection "${collection}" is already loaded` );
-                    return true;
-                }
-
-                console.error( `Failed to load collection "${collection}":`, loadErrorMessage );
-
-                // Prompt user after load failure
-                const reloadChoice = await vscode.window.showInformationMessage(
-                    `Failed to load collection "${collection}": ${loadErrorMessage}. Try again?`,
-                    'Retry',
-                    'Cancel'
-                );
-
-                if ( reloadChoice === 'Retry' ) {
-                    // Add small delay and retry
-                    await new Promise( resolve => setTimeout( resolve, 1000 ) );
-                    await this.client.loadCollection( { collection_name: collection } );
-                    console.log( `Collection "${collection}" loaded successfully on retry` );
-                    return true;
-                } else {
-                    throw new Error( `Failed to load collection "${collection}": ${loadErrorMessage}` );
-                }
+            } else {
+                // User declined to load - throw custom error for graceful handling
+                throw new CollectionNotLoadedError( collection );
             }
 
         } catch ( error ) {
@@ -497,8 +694,10 @@ cd docker && docker-compose up -d` );
                 throw new Error( `Collection "${collection}" does not exist` );
             }
 
-            // Re-throw the error if it's already our custom error
-            if ( errorMessage.includes( 'Operation cancelled' ) || errorMessage.includes( 'Failed to load collection' ) ) {
+            // Re-throw the error if it's already our custom error or user cancelled
+            if ( error instanceof CollectionNotLoadedError || 
+                errorMessage.includes( 'Operation cancelled' ) || 
+                errorMessage.includes( 'Failed to load collection' ) ) {
                 throw error;
             }
 
@@ -523,8 +722,13 @@ cd docker && docker-compose up -d` );
         console.log( 'Inserting vectors with args:', args );
 
         try {
-            // Ensure collection is loaded before proceeding
-            await this.ensureCollectionLoaded( collection );
+            // Ensure collection is loaded before proceeding (includes user confirmation)
+            const isLoaded = await this.ensureCollectionLoaded( collection );
+            if ( !isLoaded ) {
+                // User declined to load, return 0 inserted count
+                console.log( `Collection "${collection}" is not loaded, cannot insert vectors` );
+                return 0;
+            }
 
             // Check collection schema to determine if it uses auto_id
             const collectionInfo = await this.client.describeCollection( { collection_name: collection } );
@@ -556,6 +760,11 @@ cd docker && docker-compose up -d` );
             console.log( `Successfully inserted ${insertedCount} vectors` );
             return insertedCount;
         } catch ( error ) {
+            // Handle collection not loaded gracefully
+            if ( error instanceof CollectionNotLoadedError ) {
+                console.log( `Collection "${collection}" is not loaded, cannot insert vectors` );
+                return 0;
+            }
             console.error( 'Error inserting vectors:', error );
             throw new Error( `Failed to insert vectors with args ${JSON.stringify( args )}: ${error}` );
         }
@@ -574,8 +783,13 @@ cd docker && docker-compose up -d` );
         console.log( 'Searching vectors with args:', args );
 
         try {
-            // Ensure collection is loaded before proceeding
-            await this.ensureCollectionLoaded( collection );
+            // Ensure collection is loaded before proceeding (includes user confirmation)
+            const isLoaded = await this.ensureCollectionLoaded( collection );
+            if ( !isLoaded ) {
+                // User declined to load, return empty results
+                console.log( `Collection "${collection}" is not loaded, returning empty results` );
+                return [];
+            }
 
             const response = await this.client.search( {
                 collection_name: collection,
@@ -591,6 +805,11 @@ cd docker && docker-compose up -d` );
             console.log( `Search completed, found ${results.length} results` );
             return results;
         } catch ( error ) {
+            // Handle collection not loaded gracefully
+            if ( error instanceof CollectionNotLoadedError ) {
+                console.log( `Collection "${collection}" is not loaded, returning empty results` );
+                return [];
+            }
             console.error( 'Error searching vectors:', error );
             throw new Error( `Failed to search vectors with args ${JSON.stringify( args )}: ${error}` );
         }
@@ -605,8 +824,18 @@ cd docker && docker-compose up -d` );
         console.log( 'Listing vectors with args:', args );
 
         try {
-            // Ensure collection is loaded before proceeding
-            await this.ensureCollectionLoaded( collection );
+            // Ensure collection is loaded before proceeding (includes user confirmation)
+            const isLoaded = await this.ensureCollectionLoaded( collection );
+            if ( !isLoaded ) {
+                // User declined to load, return empty vector list
+                console.log( `Collection "${collection}" is not loaded, returning empty vector list` );
+                return {
+                    vectors: [],
+                    total: 0,
+                    offset: offset,
+                    limit: limit
+                };
+            }
 
             // Get total count first
             let total = 0;
@@ -717,6 +946,16 @@ cd docker && docker-compose up -d` );
                 }
             }
         } catch ( error ) {
+            // Handle collection not loaded gracefully
+            if ( error instanceof CollectionNotLoadedError ) {
+                console.log( `Collection "${collection}" is not loaded, returning empty vector list` );
+                return {
+                    vectors: [],
+                    total: 0,
+                    offset: offset,
+                    limit: limit
+                };
+            }
             console.error( 'Error listing vectors:', error );
             throw new Error( `Failed to list vectors with args ${JSON.stringify( args )}: ${error}` );
         }
@@ -731,8 +970,13 @@ cd docker && docker-compose up -d` );
         console.log( 'Deleting vectors with args:', args );
 
         try {
-            // Ensure collection is loaded before proceeding
-            await this.ensureCollectionLoaded( collection );
+            // Ensure collection is loaded before proceeding (includes user confirmation)
+            const isLoaded = await this.ensureCollectionLoaded( collection );
+            if ( !isLoaded ) {
+                // User declined to load, return 0 deleted count
+                console.log( `Collection "${collection}" is not loaded, cannot delete vectors` );
+                return 0;
+            }
 
             const response = await this.client.delete( {
                 collection_name: collection,
@@ -746,6 +990,11 @@ cd docker && docker-compose up -d` );
             console.log( `Successfully deleted ${deletedCount} vectors` );
             return deletedCount;
         } catch ( error ) {
+            // Handle collection not loaded gracefully
+            if ( error instanceof CollectionNotLoadedError ) {
+                console.log( `Collection "${collection}" is not loaded, cannot delete vectors` );
+                return 0;
+            }
             console.error( 'Error deleting vectors:', error );
             throw new Error( `Failed to delete vectors with args ${JSON.stringify( args )}: ${error}` );
         }
@@ -758,13 +1007,46 @@ cd docker && docker-compose up -d` );
         }
 
         try {
+            // First try to ensure collection is loaded for accurate load state
+            const isLoaded = await this.ensureCollectionLoaded( collection );
+            if ( !isLoaded ) {
+                // User declined to load, get basic info without load state
+                const description = await this.client.describeCollection( { collection_name: collection } );
+                
+                // Map field data types to readable strings
+                const mappedFields = description.schema?.fields?.map( ( field: any ) => ( {
+                    ...field,
+                    type: this.mapDataTypeToString( field.data_type ),
+                    isPrimaryKey: field.is_primary_key || false,
+                    autoId: field.auto_id || false
+                } ) ) || [];
+                
+                return {
+                    name: collection,
+                    description: description.schema?.description || '',
+                    fields: mappedFields,
+                    consistencyLevel: description.consistency_level || 'Session',
+                    loadState: 'Not Loaded',
+                    createdTime: description.created_utc_timestamp || null,
+                    autoId: description.schema?.fields?.some( ( field: any ) => field.auto_id ) || false
+                };
+            }
+
             const description = await this.client.describeCollection( { collection_name: collection } );
             const loadState = await this.client.getLoadState( { collection_name: collection } );
+
+            // Map field data types to readable strings
+            const mappedFields = description.schema?.fields?.map( ( field: any ) => ( {
+                ...field,
+                type: this.mapDataTypeToString( field.data_type ),
+                isPrimaryKey: field.is_primary_key || false,
+                autoId: field.auto_id || false
+            } ) ) || [];
 
             return {
                 name: collection,
                 description: description.schema?.description || '',
-                fields: description.schema?.fields || [],
+                fields: mappedFields,
                 consistencyLevel: description.consistency_level || 'Session',
                 loadState: loadState.state || 'Unknown',
                 createdTime: description.created_utc_timestamp || null,
@@ -783,7 +1065,18 @@ cd docker && docker-compose up -d` );
 
         try {
             // Step 1: Ensure collection is loaded (required for accurate statistics)
-            await this.ensureCollectionLoaded( collection );
+            const isLoaded = await this.ensureCollectionLoaded( collection );
+            if ( !isLoaded ) {
+                // User declined to load, return unknown statistics
+                console.log( `Collection "${collection}" is not loaded, returning unknown statistics` );
+                return {
+                    rowCount: 'Unknown',
+                    indexedSegments: 'Unknown',
+                    totalSegments: 'Unknown',
+                    memorySize: 'Unknown',
+                    diskSize: 'Unknown'
+                };
+            }
 
             // Step 2: Flush data to disk to ensure all data is persisted
             try {
@@ -884,6 +1177,18 @@ cd docker && docker-compose up -d` );
                 diskSize
             };
         } catch ( error ) {
+            // Handle collection not loaded gracefully
+            if ( error instanceof CollectionNotLoadedError ) {
+                console.log( `Collection "${collection}" is not loaded, returning unknown statistics` );
+                return {
+                    rowCount: 'Unknown',
+                    indexedSegments: 'Unknown',
+                    totalSegments: 'Unknown',
+                    memorySize: 'Unknown',
+                    diskSize: 'Unknown'
+                };
+            }
+            
             console.error( 'Error getting collection statistics:', error );
 
             // Return fallback statistics with at least the row count if possible
@@ -1152,6 +1457,109 @@ cd docker && docker-compose up -d` );
     }
 
     /**
+     * Delete a field from an existing collection
+     */
+    async deleteField( collectionName: string, fieldName: string ): Promise<void> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        const args = { collectionName, fieldName };
+        console.log( 'Deleting field with args:', args );
+
+        try {
+            // First, get the current collection schema
+            const collectionInfo = await this.client.describeCollection( { collection_name: collectionName } );
+
+            if ( !collectionInfo.schema ) {
+                throw new Error( 'Could not retrieve collection schema' );
+            }
+
+            // Check if field exists
+            const existingField = collectionInfo.schema.fields?.find( ( field: any ) => field.name === fieldName );
+            if ( !existingField ) {
+                throw new Error( `Field "${fieldName}" does not exist in collection "${collectionName}"` );
+            }
+
+            // Check if field is primary key
+            if ( existingField.is_primary_key ) {
+                throw new Error( `Cannot delete primary key field "${fieldName}"` );
+            }
+
+            // Create new collection with updated schema (without the field to delete)
+            const newFields = collectionInfo.schema?.fields?.filter( ( field: any ) => field.name !== fieldName ) || [];
+            const tempCollectionName = `${collectionName}_temp_${Date.now()}`;
+
+            // Map consistency level string to proper type
+            const consistencyLevelMap: { [key: string]: any } = {
+                'Strong': 'Strong',
+                'Session': 'Session',
+                'Bounded': 'Bounded',
+                'Eventually': 'Eventually',
+                'Customized': 'Customized'
+            };
+
+            const consistencyLevel = collectionInfo.consistency_level ?
+                consistencyLevelMap[collectionInfo.consistency_level as string] || 'Session' : 'Session';
+
+            try {
+                // Create new collection with updated schema
+                await this.client.createCollection( {
+                    collection_name: tempCollectionName,
+                    fields: newFields as any,
+                    consistency_level: consistencyLevel
+                } );
+
+                // Copy data from old collection to new collection (excluding the deleted field)
+                try {
+                    const response = await this.client.query( {
+                        collection_name: collectionName,
+                        output_fields: ['*'],
+                        limit: 16384
+                    } );
+
+                    if ( response?.data && response.data.length > 0 ) {
+                        // Remove the deleted field from each record
+                        const filteredData = response.data.map( ( record: any ) => {
+                            const { [fieldName]: deletedField, ...rest } = record;
+                            return rest;
+                        } );
+
+                        await this.client.insert( {
+                            collection_name: tempCollectionName,
+                            data: filteredData
+                        } );
+                    }
+                } catch ( copyError ) {
+                    console.warn( 'Could not copy existing data:', copyError );
+                }
+
+                // Drop old collection
+                await this.client.dropCollection( { collection_name: collectionName } );
+
+                // Rename new collection to old name (create alias)
+                await this.client.createAlias( {
+                    collection_name: tempCollectionName,
+                    alias: collectionName
+                } );
+
+                console.log( `Field "${fieldName}" deleted from collection "${collectionName}" successfully` );
+            } catch ( fieldError ) {
+                // Cleanup temp collection if something went wrong
+                try {
+                    await this.client.dropCollection( { collection_name: tempCollectionName } );
+                } catch ( cleanupError ) {
+                    console.warn( 'Failed to cleanup temporary collection:', cleanupError );
+                }
+                throw fieldError;
+            }
+        } catch ( error ) {
+            console.error( 'Error deleting field:', error );
+            throw new Error( `Failed to delete field "${fieldName}" from collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
+        }
+    }
+
+    /**
      * Add a new field to an existing collection
      */
     async addField(
@@ -1170,7 +1578,7 @@ cd docker && docker-compose up -d` );
         console.log( 'Adding field with args:', args );
 
         try {
-            // First, get the current collection schema
+            // First, get the current collection schema to check if field already exists
             const collectionInfo = await this.client.describeCollection( { collection_name: collectionName } );
 
             if ( !collectionInfo.schema ) {
@@ -1221,67 +1629,16 @@ cd docker && docker-compose up -d` );
                 newField.default_value = defaultValue;
             }
 
-            // Create new collection with updated schema
-            const newFields = [...( collectionInfo.schema?.fields || [] ), newField];
-            const tempCollectionName = `${collectionName}_temp_${Date.now()}`;
+            // Use the Milvus SDK's addCollectionField method
+            const response = await this.client.addCollectionField( {
+                collection_name: collectionName,
+                field: newField
+            } );
 
-            // Map consistency level string to proper type
-            const consistencyLevelMap: { [key: string]: any } = {
-                'Strong': 'Strong',
-                'Session': 'Session',
-                'Bounded': 'Bounded',
-                'Eventually': 'Eventually',
-                'Customized': 'Customized'
-            };
+            // Check response status
+            this.checkResponseStatus( response, 'addCollectionField' );
 
-            const consistencyLevel = collectionInfo.consistency_level ?
-                consistencyLevelMap[collectionInfo.consistency_level as string] || 'Session' : 'Session';
-
-            try {
-                // Create new collection with updated schema
-                await this.client.createCollection( {
-                    collection_name: tempCollectionName,
-                    fields: newFields,
-                    consistency_level: consistencyLevel
-                } );
-
-                // Copy data from old collection to new collection
-                try {
-                    await this.client.query( {
-                        collection_name: collectionName,
-                        output_fields: ['*'],
-                        limit: 16384
-                    } ).then( async ( response ) => {
-                        if ( response?.data && response.data.length > 0 && this.client ) {
-                            await this.client.insert( {
-                                collection_name: tempCollectionName,
-                                data: response.data
-                            } );
-                        }
-                    } );
-                } catch ( copyError ) {
-                    console.warn( 'Could not copy existing data:', copyError );
-                }
-
-                // Drop old collection
-                await this.client.dropCollection( { collection_name: collectionName } );
-
-                // Rename new collection to old name (create alias)
-                await this.client.createAlias( {
-                    collection_name: tempCollectionName,
-                    alias: collectionName
-                } );
-
-                console.log( `Field "${fieldName}" added to collection "${collectionName}" successfully` );
-            } catch ( fieldError ) {
-                // Cleanup temp collection if something went wrong
-                try {
-                    await this.client.dropCollection( { collection_name: tempCollectionName } );
-                } catch ( cleanupError ) {
-                    console.warn( 'Failed to cleanup temporary collection:', cleanupError );
-                }
-                throw fieldError;
-            }
+            console.log( `Field "${fieldName}" added to collection "${collectionName}" successfully` );
         } catch ( error ) {
             console.error( 'Error adding field:', error );
             throw new Error( `Failed to add field "${fieldName}" to collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
@@ -1467,8 +1824,108 @@ cd docker && docker-compose up -d` );
             console.log( `Deleted ${deletedCount} entities from collection "${collectionName}"` );
             return deletedCount;
         } catch ( error ) {
+            // Handle collection not loaded by prompting user
+            if ( error instanceof CollectionNotLoadedError ) {
+                const loaded = await this.handleCollectionNotLoaded( collectionName );
+                if ( loaded ) {
+                    // Retry the operation after loading
+                    return this.deleteAllEntities( collectionName );
+                } else {
+                    // User declined to load, return 0 deleted count
+                    console.log( `Collection "${collectionName}" is not loaded, cannot delete entities` );
+                    return 0;
+                }
+            }
             console.error( 'Error deleting all entities:', error );
             throw new Error( `Failed to delete all entities from collection "${collectionName}": ${error instanceof Error ? error.message : String( error )}` );
+        }
+    }
+
+    async getDatabaseInfo(): Promise<any> {
+        if ( !this.client ) {
+            throw new Error( 'Milvus client not connected' );
+        }
+
+        try {
+            // Get list of collections in the current database
+            const collectionsResponse = await this.client.showCollections();
+            const collectionNames = (collectionsResponse as any).collection_names || [];
+
+            // Get detailed info for each collection
+            const collections = await Promise.all(
+                collectionNames.map(async (name: string) => {
+                    try {
+                        // Get basic collection info
+                        const description = await this.client!.describeCollection({ collection_name: name });
+                        
+                        // Check load state
+                        let loadState = 'Unknown';
+                        try {
+                            const loadStateResponse = await this.client!.getLoadState({ collection_name: name });
+                            loadState = (loadStateResponse as any).state || 'Unknown';
+                        } catch (error) {
+                            // If we can't get load state, assume unloaded
+                            loadState = 'NotLoad';
+                        }
+
+                        // Get row count (with fallback)
+                        let rowCount = 0;
+                        try {
+                            if (loadState === 'LoadStateLoaded') {
+                                const stats = await this.client!.getCollectionStatistics({ collection_name: name });
+                                // Parse row count from stats array
+                                const statsArray = (stats as any).stats || [];
+                                const rowCountStat = statsArray.find((stat: any) => stat.key === 'row_count');
+                                rowCount = parseInt(rowCountStat?.value || '0') || 0;
+                            }
+                        } catch (error) {
+                            // If collection is not loaded or stats fail, row count remains 0
+                            console.warn(`Could not get row count for collection "${name}":`, error);
+                        }
+
+                        return {
+                            name,
+                            loadState: loadState === 'LoadStateLoaded' ? 'Loaded' : 'Unloaded',
+                            rowCount,
+                            description: description.schema?.description || ''
+                        };
+                    } catch (error) {
+                        console.warn(`Error getting info for collection "${name}":`, error);
+                        return {
+                            name,
+                            loadState: 'Unknown',
+                            rowCount: 0,
+                            description: ''
+                        };
+                    }
+                })
+            );
+
+            // Get current database name (default to 'default' if not available)
+            let databaseName = 'default';
+            try {
+                if (this.client.listDatabases) {
+                    const dbResponse = await this.client.listDatabases();
+                    const dbNames = (dbResponse as any)?.db_names;
+                    if (dbNames && dbNames.length > 0) {
+                        databaseName = dbNames.find((name: string) => name === 'default') || dbNames[0];
+                    }
+                }
+            } catch (error) {
+                // If listDatabases is not supported or fails, use default
+                console.warn('Could not get database list, using default:', error);
+            }
+
+            return {
+                databaseInfo: {
+                    name: databaseName,
+                    description: `Milvus database containing ${collections.length} collections`,
+                    collections
+                }
+            };
+        } catch (error) {
+            console.error('Error getting database info:', error);
+            throw new Error(`Failed to get database info: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 }
